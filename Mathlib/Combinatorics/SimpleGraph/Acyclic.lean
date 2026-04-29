@@ -6,6 +6,7 @@ Authors: Kyle Miller
 module
 
 public import Mathlib.Combinatorics.SimpleGraph.Bipartite
+public import Mathlib.Combinatorics.SimpleGraph.Connectivity.Connected
 public import Mathlib.Combinatorics.SimpleGraph.Connectivity.Subgraph
 public import Mathlib.Combinatorics.SimpleGraph.Connectivity.EdgeConnectivity
 public import Mathlib.Combinatorics.SimpleGraph.DegreeSum
@@ -666,5 +667,67 @@ lemma isAcyclic_iff_pairwise_not_isEdgeReachable_two :
     exact h w hw
   · refine isAcyclic_iff_forall_adj_isBridge.mpr fun _ _ hadj ↦ ?_
     exact isBridge_iff_adj_and_not_isEdgeConnected_two.mpr ⟨hadj, h hadj.ne⟩
+
+
+namespace Subgraph
+
+variable {H : G.Subgraph}
+
+protected structure IsAcyclic : Prop where
+  protected coe : H.coe.IsAcyclic
+
+instance : Coe H.IsAcyclic H.coe.IsAcyclic := ⟨IsAcyclic.coe⟩
+
+protected lemma isAcyclic_iff : H.IsAcyclic ↔ H.coe.IsAcyclic := ⟨fun ⟨h⟩ => h, .mk⟩
+
+protected structure IsTree : Prop where
+  protected coe : H.coe.IsTree
+
+instance : Coe H.IsTree H.coe.IsTree := ⟨IsTree.coe⟩
+
+protected lemma isTree_iff : H.IsTree ↔ H.coe.IsTree := ⟨fun ⟨h⟩ => h, .mk⟩
+
+protected lemma IsTree.connected (h : H.IsTree) : H.Connected := ⟨h.coe.connected⟩
+
+protected lemma IsTree.isAcyclic (h : H.IsTree) : H.IsAcyclic := ⟨h.coe.isAcyclic⟩
+
+lemma isTree_of_connectedComponent (c : H.coe.ConnectedComponent) (hT : G.IsTree) :
+    c.toSimpleGraph.IsTree :=
+  IsAcyclic.isTree_connectedComponent (IsAcyclic.subgraph hT.isAcyclic H) c
+
+lemma isTree_of_connected_induce {s : Set V} (hT : G.IsTree) (hconn : (G.induce s).Connected) :
+    ((⊤ : G.Subgraph).induce s).IsTree := by
+  refine ⟨?_⟩
+  rw [← SimpleGraph.induce_eq_coe_induce_top]
+  exact ⟨hconn, hT.isAcyclic.induce s⟩
+
+def _root_.SimpleGraph.subtreeOfCut (_ : G.IsTree) (edges : Set (Sym2 V)) (x : V) :
+    (G.deleteEdges edges).ConnectedComponent :=
+  (G.deleteEdges edges).connectedComponentMk x
+
+lemma IsTree.subtreeOfCut {u v : V} (ht : G.IsTree) (_ : G.Adj u v) (x : V) :
+    (G.subtreeOfCut ht {s(u, v)} x).toSimpleGraph.IsTree :=
+  IsAcyclic.isTree_connectedComponent (ht.isAcyclic.anti (G.deleteEdges_le _)) _
+
+lemma _root_.SimpleGraph.disjoint_subtreeOfCut {u v : V} (ht : G.IsTree) (hadj : G.Adj u v) :
+    G.subtreeOfCut ht {s(u, v)} u ≠ G.subtreeOfCut ht {s(u, v)} v := by
+  intro h
+  have hbridge : G.IsBridge s(u, v) := isAcyclic_iff_forall_adj_isBridge.mp ht.isAcyclic hadj
+  rw [isBridge_iff] at hbridge
+  exact hbridge.right (ConnectedComponent.exact h)
+
+/-- In a tree, any path between two vertices in different subtrees (formed by cutting an edge)
+must include the cut edge. -/
+lemma _root_.SimpleGraph.path_mem_cut_edge_of_subtreeOfCut_ne {u v : V} (ht : G.IsTree)
+    {a b : V} (hne : G.subtreeOfCut ht {s(u, v)} a ≠ G.subtreeOfCut ht {s(u, v)} b)
+    (p : G.Path a b) : s(u, v) ∈ p.val.edges := by
+  by_contra h_no
+  refine hne (ConnectedComponent.sound (p.val.toDeleteEdges _ ?_).reachable)
+  intro e he hes
+  rw [Set.mem_singleton_iff] at hes
+  exact h_no (hes ▸ he)
+
+
+end Subgraph
 
 end SimpleGraph
