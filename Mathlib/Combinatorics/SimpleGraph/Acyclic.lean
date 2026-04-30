@@ -701,7 +701,9 @@ lemma isTree_of_connected_induce {s : Set V} (hT : G.IsTree) (hconn : (G.induce 
   rw [← SimpleGraph.induce_eq_coe_induce_top]
   exact ⟨hconn, hT.isAcyclic.induce s⟩
 
-def _root_.SimpleGraph.subtreeOfCut (_ : G.IsTree) (edges : Set (Sym2 V)) (x : V) :
+end Subgraph
+
+def subtreeOfCut (_ : G.IsTree) (edges : Set (Sym2 V)) (x : V) :
     (G.deleteEdges edges).ConnectedComponent :=
   (G.deleteEdges edges).connectedComponentMk x
 
@@ -709,7 +711,7 @@ lemma IsTree.subtreeOfCut {u v : V} (ht : G.IsTree) (_ : G.Adj u v) (x : V) :
     (G.subtreeOfCut ht {s(u, v)} x).toSimpleGraph.IsTree :=
   IsAcyclic.isTree_connectedComponent (ht.isAcyclic.anti (G.deleteEdges_le _)) _
 
-lemma _root_.SimpleGraph.disjoint_subtreeOfCut {u v : V} (ht : G.IsTree) (hadj : G.Adj u v) :
+lemma disjoint_subtreeOfCut {u v : V} (ht : G.IsTree) (hadj : G.Adj u v) :
     G.subtreeOfCut ht {s(u, v)} u ≠ G.subtreeOfCut ht {s(u, v)} v := by
   intro h
   have hbridge : G.IsBridge s(u, v) := isAcyclic_iff_forall_adj_isBridge.mp ht.isAcyclic hadj
@@ -718,7 +720,7 @@ lemma _root_.SimpleGraph.disjoint_subtreeOfCut {u v : V} (ht : G.IsTree) (hadj :
 
 /-- In a tree, any path between two vertices in different subtrees (formed by cutting an edge)
 must include the cut edge. -/
-lemma _root_.SimpleGraph.path_mem_cut_edge_of_subtreeOfCut_ne {u v : V} (ht : G.IsTree)
+lemma path_mem_cut_edge_of_subtreeOfCut_ne {u v : V} (ht : G.IsTree)
     {a b : V} (hne : G.subtreeOfCut ht {s(u, v)} a ≠ G.subtreeOfCut ht {s(u, v)} b)
     (p : G.Path a b) : s(u, v) ∈ p.val.edges := by
   by_contra h_no
@@ -727,7 +729,158 @@ lemma _root_.SimpleGraph.path_mem_cut_edge_of_subtreeOfCut_ne {u v : V} (ht : G.
   rw [Set.mem_singleton_iff] at hes
   exact h_no (hes ▸ he)
 
+/-- In a tree, deleting an edge `s(u, v)` partitions the vertices into the components of `u`
+and `v`: every vertex's `subtreeOfCut` equals either `subtreeOfCut u` or `subtreeOfCut v`. -/
+lemma subtreeOfCut_eq_or_eq {u v : V} (ht : G.IsTree) (hadj : G.Adj u v)
+    (z : V) : G.subtreeOfCut ht {s(u, v)} z = G.subtreeOfCut ht {s(u, v)} u ∨
+    G.subtreeOfCut ht {s(u, v)} z = G.subtreeOfCut ht {s(u, v)} v := by
+  classical
+  by_cases hzu : G.subtreeOfCut ht {s(u, v)} z = G.subtreeOfCut ht {s(u, v)} u
+  · exact Or.inl hzu
+  right
+  obtain ⟨p, hp_path, _⟩ := ht.existsUnique_path u z
+  have h_in : s(u, v) ∈ p.edges :=
+    G.path_mem_cut_edge_of_subtreeOfCut_ne ht (Ne.symm hzu) ⟨p, hp_path⟩
+  have hv_supp : v ∈ p.support := p.snd_mem_support_of_mem_edges h_in
+  -- The unique path from `u` to `v` is the single edge; equating it with `p.takeUntil v`
+  -- (also a path `u → v`) shows `s(u, v) ∈ takeUntil v.edges`
+  obtain ⟨_, _, hpa_unique⟩ := ht.existsUnique_path u v
+  have h_take_eq : p.takeUntil v hv_supp = Walk.cons hadj Walk.nil :=
+    (hpa_unique _ (hp_path.takeUntil hv_supp)).trans
+      (hpa_unique _ (Walk.IsPath.nil.cons (by simp [hadj.ne]))).symm
+  have h_in_take : s(u, v) ∈ (p.takeUntil v hv_supp).edges := by rw [h_take_eq]; simp
+  -- For a trail, takeUntil and dropUntil edges are disjoint, so dropUntil avoids `s(u, v)`
+  have h_notin_drop : s(u, v) ∉ (p.dropUntil v hv_supp).edges :=
+    hp_path.isTrail.disjoint_edges_takeUntil_dropUntil hv_supp h_in_take
+  refine (ConnectedComponent.sound
+    ((p.dropUntil v hv_supp).toDeleteEdges {s(u, v)} ?_).reachable).symm
+  intro e he hes
+  rw [Set.mem_singleton_iff] at hes
+  exact h_notin_drop (hes ▸ he)
 
-end Subgraph
+/-- A walk in `G.induce s` mapped to `G` via the canonical inclusion has support in `s`. -/
+lemma Walk.support_map_induce_subset {s : Set V} {u v : ↥s}
+    (w : (G.induce s).Walk u v) :
+    ∀ x ∈ (w.map (Embedding.induce s).toHom).support, x ∈ s := by
+  simp only [Walk.support_map, List.mem_map]
+  rintro _ ⟨⟨_, h⟩, _, rfl⟩
+  exact h
+
+/-- If `G.induce s` is connected and contains `u, v`, there is a walk from `u` to `v` in `G`
+whose support is contained in `s`. -/
+lemma exists_walk_support_subset_of_connected_induce {s : Set V}
+    (hs : (G.induce s).Connected) {u v : V} (hu : u ∈ s) (hv : v ∈ s) :
+    ∃ p : G.Walk u v, ∀ x ∈ p.support, x ∈ s := by
+  obtain ⟨w⟩ := hs.preconnected ⟨u, hu⟩ ⟨v, hv⟩
+  exact ⟨w.map (Embedding.induce s).toHom, w.support_map_induce_subset⟩
+
+/-- In a tree, the intersection of two connected induced subgraphs (when nonempty) is
+connected. -/
+lemma IsTree.connected_induce_inter {a b : Set V} (ht : G.IsTree) (hab : (a ∩ b).Nonempty)
+    (ha : (G.induce a).Connected) (hb : (G.induce b).Connected) :
+    (G.induce (a ∩ b)).Connected := by
+  classical
+  haveI : Nonempty ↥(a ∩ b) := hab.to_subtype
+  refine ⟨?_⟩
+  intro ⟨x, hx⟩ ⟨y, hy⟩
+  obtain ⟨wa, hwa⟩ := exists_walk_support_subset_of_connected_induce ha hx.1 hy.1
+  obtain ⟨wb, hwb⟩ := exists_walk_support_subset_of_connected_induce hb hx.2 hy.2
+  have heq : wa.toPath = wb.toPath := ht.isAcyclic.path_unique _ _
+  have hpath_ab : ∀ z ∈ wa.toPath.val.support, z ∈ a ∩ b := fun z hz =>
+    ⟨hwa _ (Walk.support_toPath_subset _ hz),
+     hwb _ (Walk.support_toPath_subset _ (heq ▸ hz))⟩
+  exact ⟨wa.toPath.val.induce (a ∩ b) hpath_ab⟩
+
+/-- In a tree, given two connected induced subgraphs `a, b` with intersecting vertex sets, every
+walk from a vertex of `a` to a vertex of `b` passes through a vertex of `a ∩ b`. -/
+lemma IsTree.mem_walk_of_inter_nonempty (hT : G.IsTree) {a b : Set V}
+    (ha : (G.induce a).Connected) (hb : (G.induce b).Connected) (hab : (a ∩ b).Nonempty) :
+    ∀ x ∈ a, ∀ y ∈ b, ∀ w : G.Walk x y, (w.toSubgraph.verts ∩ a ∩ b).Nonempty := by
+  classical
+  intro x hx y hy w
+  obtain ⟨m, hma, hmb⟩ := hab
+  obtain ⟨wxm_g, hwxm_a⟩ := exists_walk_support_subset_of_connected_induce ha hx hma
+  obtain ⟨wmy_g, hwmy_b⟩ := exists_walk_support_subset_of_connected_induce hb hmb hy
+  let W : G.Walk x y := wxm_g.append wmy_g
+  have hW_eq : W.toPath = w.toPath := hT.isAcyclic.path_unique _ _
+  obtain hy_in_a | hy_not_a := em (y ∈ a)
+  · exact ⟨y, ⟨w.end_mem_verts_toSubgraph, hy_in_a⟩, hy⟩
+  -- d is the boundary dart where d.fst ∈ a, d.snd ∉ a.
+  obtain ⟨d, hd_in, hd_fst_a, hd_snd_not_a⟩ :=
+    W.toPath.val.exists_boundary_dart a hx hy_not_a
+  have hd_fst_w : d.fst ∈ w.toSubgraph.verts :=
+    w.mem_verts_toSubgraph.mpr (Walk.support_toPath_subset w
+      (hW_eq ▸ W.toPath.val.dart_fst_mem_support_of_mem_darts hd_in))
+  suffices hd_fst_b : d.fst ∈ b from ⟨d.fst, ⟨hd_fst_w, hd_fst_a⟩, hd_fst_b⟩
+  -- The boundary edge is on `W.toPath`, hence on one of `wxm_g`, `wmy_g`.
+  obtain he_xm | he_my : s(d.fst, d.snd) ∈ wxm_g.edges ∨ s(d.fst, d.snd) ∈ wmy_g.edges := by
+    rw [← List.mem_append, ← Walk.edges_append]
+    exact Walk.edges_toPath_subset _ (List.mem_map.mpr ⟨d, hd_in, rfl⟩)
+  · exact absurd (hwxm_a _ (wxm_g.snd_mem_support_of_mem_edges he_xm)) hd_snd_not_a
+  · exact hwmy_b _ (wmy_g.fst_mem_support_of_mem_edges he_my)
+
+/-- If three subtrees have pairwise intersecting vertex sets, then there must be a vertex in all
+    three sets. -/
+theorem IsTree.inter_nonempty_of_pairwise_three (hT : G.IsTree) {a b c : Set V}
+    (ha : (G.induce a).Connected) (hb : (G.induce b).Connected) (hc : (G.induce c).Connected)
+    (hab : (a ∩ b).Nonempty) (hbc : (b ∩ c).Nonempty) (hca : (c ∩ a).Nonempty) :
+    (a ∩ b ∩ c).Nonempty := by
+  obtain ⟨ac, hac⟩ := hca
+  obtain ⟨bc, hbc⟩ := hbc
+  obtain ⟨w, hw_in_c⟩ := exists_walk_support_subset_of_connected_induce hc hac.left hbc.right
+  obtain ⟨v, hv⟩ : (w.toSubgraph.verts ∩ a ∩ b).Nonempty := hT.mem_walk_of_inter_nonempty ha hb hab
+    ac hac.right bc hbc.left w
+  have hvc : v ∈ c := hw_in_c _ (w.mem_verts_toSubgraph.mp hv.1.1)
+  use v
+  grind only [= Set.mem_inter_iff]
+
+/-- **Helly's property for subtrees of a tree**: a nonempty finite indexed family of pairwise
+intersecting connected subsets of a tree has nonempty common intersection.
+
+Induction on `#s`: for `#s = 1`, trivial via connectedness. For `#s ≥ 2`, pick any `c ∈ s`,
+and reduce to `s.erase c` with family `fun i => a i ∩ a c`. Each `a i ∩ a c` is connected
+(intersection of connected subtrees in a tree), and pairwise intersection follows from
+`inter_nonempty_of_pairwise_three` applied to `a i, a j, a c`. The IH then gives the result. -/
+theorem IsTree.inter_nonempty_of_pairwise {ι : Type*} (hT : G.IsTree)
+    {a : ι → Set V} {s : Finset ι} (hs : s.Nonempty)
+    (h_conn : ∀ i ∈ s, (G.induce (a i)).Connected)
+    (h_pair : ∀ i ∈ s, ∀ j ∈ s, (a i ∩ a j).Nonempty) :
+    (⋂ i ∈ s, a i).Nonempty := by
+  classical
+  -- Convert to the logical form `∃ v, ∀ i ∈ s, v ∈ a i`.
+  simp only [Set.nonempty_def, Set.mem_iInter]
+  induction h_n : s.card generalizing s a with
+  | zero => exact absurd h_n (Finset.card_ne_zero.mpr hs)
+  | succ n ih =>
+    -- Base case `#s = 1`: pick any `v ∈ a c`.
+    by_cases h_one : s.card = 1
+    · obtain ⟨c, rfl⟩ := Finset.card_eq_one.mp h_one
+      obtain ⟨v, hv⟩ := (h_conn c (Finset.mem_singleton_self c)).nonempty
+      exact ⟨v, fun i hi => (Finset.mem_singleton.mp hi).symm ▸ hv⟩
+    -- Inductive case `#s ≥ 2`: pick `c ∈ s`, reduce to `s' := s.erase c` with family `a i ∩ a c`.
+    obtain ⟨c, hc⟩ := hs
+    set s' := s.erase c with hs'_def
+    have h_card' : s'.card = n := by rw [hs'_def, Finset.card_erase_of_mem hc, h_n]; omega
+    have hs' : s'.Nonempty := by rw [← Finset.card_pos, h_card']; omega
+    -- For each `i ∈ s'`, `a i ∩ a c` is connected.
+    have h_conn' : ∀ i ∈ s', (G.induce (a i ∩ a c)).Connected := fun i hi =>
+      hT.connected_induce_inter (h_pair i (Finset.mem_of_mem_erase hi) c hc)
+        (h_conn i (Finset.mem_of_mem_erase hi)) (h_conn c hc)
+    -- Pairwise on `s'`: a witness in `a i ∩ a j ∩ a c` (3-set Helly) lies in both `a i ∩ a c`
+    -- and `a j ∩ a c`.
+    have h_pair' : ∀ i ∈ s', ∀ j ∈ s', ((a i ∩ a c) ∩ (a j ∩ a c)).Nonempty := by
+      intro i hi j hj
+      have hi_in := Finset.mem_of_mem_erase hi
+      have hj_in := Finset.mem_of_mem_erase hj
+      obtain ⟨v, hv⟩ := hT.inter_nonempty_of_pairwise_three (h_conn i hi_in) (h_conn j hj_in)
+        (h_conn c hc) (h_pair i hi_in j hj_in) (h_pair j hj_in c hc) (h_pair c hc i hi_in)
+      exact ⟨v, ⟨hv.1.1, hv.2⟩, hv.1.2, hv.2⟩
+    -- IH gives `v` with `v ∈ a i ∩ a c` for all `i ∈ s'`; so `v ∈ a c`, and `v ∈ a i` for `i ≠ c`.
+    obtain ⟨v, hv⟩ := ih hs' h_conn' h_pair' h_card'
+    refine ⟨v, fun i hi => ?_⟩
+    by_cases h_eq : i = c
+    · subst h_eq; obtain ⟨d, hd⟩ := hs'; exact (hv d hd).2
+    · exact (hv i (Finset.mem_erase.mpr ⟨h_eq, hi⟩)).1
+
 
 end SimpleGraph
