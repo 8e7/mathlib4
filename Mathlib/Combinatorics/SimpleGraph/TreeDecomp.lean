@@ -18,17 +18,26 @@ This file defines tree decompositions on simple graphs and the treewidth paramet
 ## Main definitions
 
 * `SimpleGraph.TreeDecomp` is a tree decomposition of a simple graph.
-* `TreeDecomp.ewidth` is the extended width of the tree decomposition. `SimpleGraph.width` is the
+* `TreeDecomp.ewidth` is the extended width of the tree decomposition. `TreeDecomp.width` is the
   ℕ-valued version.
 * `SimpleGraph.hasTreeDecomp n` is a predicate that a simple graph has a tree decomposition of width
   at most n.
-* `SimpleGraph.etreeWidth` is the extended tree width of a simple graph. `SimpleGraph.treewidth` is
+* `SimpleGraph.etreeWidth` is the extended tree width of a simple graph. `SimpleGraph.treeWidth` is
   the ℕ-valued version.
+
+## Conventions
+
+The user-facing API uses `treeWidth : SimpleGraph V → ℕ`. The extended version
+`etreeWidth : SimpleGraph V → ℕ∞` is mostly an implementation detail that handles the corner case
+of graphs without finite treewidth (returning `⊤`). For `[Finite V]`, the two are interchangeable
+via `treeWidth_le_iff_etreeWidth_le` (a `simp` lemma) and `treeWidth_le_iff_hasTreeDecomp`. State
+theorems in `treeWidth` form unless infinite-vertex graphs are genuinely in scope.
 
 ## Main statements
 
 * `treeWidth_le_card` shows that a finite graph must have finite treewidth.
 * `etreeWidth_ne_zero_iff_ne_bot` shows that a graph has nonzero treewidth iff it is nonempty.
+* `treewidth_top` shows that the complete graph on a finite vertex type has treewidth `card V - 1`.
 
 ## References
 
@@ -37,8 +46,11 @@ This file defines tree decompositions on simple graphs and the treewidth paramet
 
 ## TODO
 
+- Refactor (add a simp lemma for treewidth ≥ k)
+- Fix proper adhesion lemma
+- Prove adhesion set is a separator (with new notation)
+
 * Prove `G.IsAcyclic ↔ G.treewidth ≤ 1`.
-* Prove that a complete graph with `n` vertices has treewidth `n-1`.
 
 ## Tags
 tree decomposition, treewidth
@@ -188,16 +200,28 @@ lemma TreeDecomp.ewidth_le_card [Fintype V] (t : TreeDecomp G) :
   iSup_le fun _ ↦ by
     exact_mod_cast Nat.sub_le_sub_right (Finset.card_le_univ _) 1
 
+/-- On a finite vertex type, every tree decomposition has finite extended width. -/
+lemma TreeDecomp.ewidth_ne_top_of_finite [Finite V] (t : TreeDecomp G) : t.ewidth ≠ ⊤ := by
+  have := Fintype.ofFinite V
+  exact (t.ewidth_le_card.trans_lt (ENat.coe_lt_top _)).ne
+
 @[simp]
 lemma TreeDecomp.coe_width_of_finite [Finite V] (t : TreeDecomp G) :
-    (t.width : ℕ∞) = t.ewidth := by
-  have := Fintype.ofFinite V
-  exact t.coe_width (t.ewidth_le_card.trans_lt (ENat.coe_lt_top _)).ne
+    (t.width : ℕ∞) = t.ewidth := t.coe_width t.ewidth_ne_top_of_finite
+
+@[simp]
+lemma TreeDecomp.width_le_iff_ewidth_le [Finite V] (t : TreeDecomp G) {k : ℕ} :
+    t.width ≤ k ↔ t.ewidth ≤ k := by
+  rw [← t.coe_width_of_finite]; exact_mod_cast Iff.rfl
 
 /-- On a finite vertex type, every tree decomposition has width at most `card V - 1`. -/
 lemma TreeDecomp.width_le_card [Fintype V] (t : TreeDecomp G) :
     t.width ≤ card V - 1 := by
   exact_mod_cast t.coe_width_of_finite ▸ t.ewidth_le_card
+
+/-- Each bag of a tree decomposition has cardinality at most `width + 1` (finite-vertex form). -/
+lemma TreeDecomp.card_bag_le_width_of_finite [Finite V] (t : G.TreeDecomp) (w : t.W) :
+    #(t.𝓧 w) ≤ t.width + 1 := t.card_bag_le_width t.ewidth_ne_top_of_finite w
 
 end TreeDecomp
 
@@ -243,20 +267,32 @@ lemma etreeWidth_mono {G' : SimpleGraph V} (h : G' ≤ G) : G'.etreeWidth ≤ G.
     rw [etreeWidth_le_iff_hasTreeDecomp]
     exact TreeDecomp.mono h ((etreeWidth_le_iff_hasTreeDecomp a).mp hw.le)
 
-@[simp]
-lemma coe_treeWidth_of_finite [Finite V] :
-    (G.treeWidth : ℕ∞) = G.etreeWidth := by
+/-- On a finite vertex type, the extended treewidth is finite. -/
+lemma etreeWidth_ne_top_of_finite [Finite V] : G.etreeWidth ≠ ⊤ := by
   have := Fintype.ofFinite V
-  exact coe_treeWidth (etreeWidth_le_card.trans_lt (ENat.coe_lt_top _)).ne
+  exact (etreeWidth_le_card.trans_lt (ENat.coe_lt_top _)).ne
+
+@[simp]
+lemma coe_treeWidth_of_finite [Finite V] : (G.treeWidth : ℕ∞) = G.etreeWidth :=
+  coe_treeWidth etreeWidth_ne_top_of_finite
+
+@[simp]
+lemma treeWidth_le_iff_etreeWidth_le [Finite V] {k : ℕ} :
+    G.treeWidth ≤ k ↔ G.etreeWidth ≤ k := by
+  rw [← coe_treeWidth_of_finite]; exact_mod_cast Iff.rfl
+
+/-- G has treewidth at most `k` (as a natural number) iff it has a tree decomposition of width
+at most `k`. -/
+theorem treeWidth_le_iff_hasTreeDecomp [Finite V] (k : ℕ) :
+    G.treeWidth ≤ k ↔ G.hasTreeDecomp k :=
+  treeWidth_le_iff_etreeWidth_le.trans (etreeWidth_le_iff_hasTreeDecomp k)
 
 /-- The treewidth of a finite graph is at most `card V - 1`. -/
-theorem treeWidth_le_card [Fintype V] :
-    G.treeWidth ≤ card V - 1 := by
-  exact_mod_cast coe_treeWidth_of_finite (V := V) ▸ etreeWidth_le_card (G := G)
+theorem treeWidth_le_card [Fintype V] : G.treeWidth ≤ card V - 1 :=
+  treeWidth_le_iff_etreeWidth_le.mpr etreeWidth_le_card
 
 @[gcongr]
 lemma treeWidth_mono {G' : SimpleGraph V} [Finite V] (h : G' ≤ G) : G'.treeWidth ≤ G.treeWidth := by
-  suffices (G'.treeWidth : ℕ∞) ≤ G.treeWidth by exact_mod_cast this
   simpa using etreeWidth_mono h
 
 /-- The treewidth of a graph is nonzero iff it has an edge. -/
@@ -285,15 +321,74 @@ lemma etreeWidth_bot : (⊥ : SimpleGraph V).etreeWidth = 0 :=
 lemma treeWidth_bot : (⊥ : SimpleGraph V).treeWidth = 0 := by
   simp [treeWidth]
 
+lemma TreeDecomp.exists_bag_univ_of_forall_edgeCover [Nonempty V] [Fintype V] (t : G.TreeDecomp)
+    (h : ∀ u v : V, ∃ w : t.W, u ∈ t.𝓧 w ∧ v ∈ t.𝓧 w) : ∃ w : t.W, t.𝓧 w = univ := by
+  let f (x : V) := {w | x ∈ t.𝓧 w}
+  let s : Finset V := univ
+  have hs : s.Nonempty := by simp [s]
+  have h_conn : ∀ i ∈ s, (t.T.induce (f i)).Connected := by
+    intro v _
+    rw [connected_iff (induce (f v) t.T)]
+    constructor
+    · exact t.connectedBags v
+    · have ⟨w, hw⟩ := t.vertexCover v
+      use w
+      simpa [f]
+  have h_pair : ∀ i ∈ s, ∀ j ∈ s, (f i ∩ f j).Nonempty := by
+    intro i _ j _
+    have ⟨w, hw⟩ := h i j
+    use w
+    simpa [hw]
+  obtain ⟨w, hw⟩ := t.isTree.inter_nonempty_of_pairwise hs h_conn h_pair
+  use w
+  simp [s, f] at hw
+  grind only [= nonempty_def, ← mem_univ]
+
+theorem treewidth_top [Fintype V] : (⊤ : SimpleGraph V).treeWidth = card V - 1 := by
+  refine le_antisymm treeWidth_le_card ?_
+  rcases isEmpty_or_nonempty V with hV | hV
+  · simp
+  -- Trivial when `card V = 1` since both sides are `0`.
+  by_cases h_one : card V = 1
+  · simp [h_one]
+  -- Main case: `card V ≥ 2`. By contradiction, suppose treewidth `< card V - 1`.
+  have h_two : 2 ≤ card V := by have := Fintype.card_pos (α := V); omega
+  by_contra! h_lt
+  -- A tree decomposition of width `≤ card V - 2` exists.
+  have h_le2 : (⊤ : SimpleGraph V).treeWidth ≤ card V - 2 := by omega
+  obtain ⟨t, ht⟩ := (treeWidth_le_iff_hasTreeDecomp _).mp h_le2
+  -- In `K_n`, every pair of vertices is in some bag.
+  have forall_edgeCover : ∀ u v : V, ∃ w : t.W, u ∈ t.𝓧 w ∧ v ∈ t.𝓧 w := fun u v => by
+    by_cases h : u = v
+    · subst h; obtain ⟨w, hw⟩ := t.vertexCover u; exact ⟨w, hw, hw⟩
+    · exact t.edgeCover ((top_adj u v).mpr h)
+  -- Hence some bag is the whole vertex set, but that bag has cardinality `> card V - 1`.
+  obtain ⟨w, hw⟩ := t.exists_bag_univ_of_forall_edgeCover forall_edgeCover
+  have h_contra := t.card_bag_le_width_of_finite w
+  rw [hw, Finset.card_univ] at h_contra
+  have h_t_width : t.width ≤ card V - 2 := t.width_le_iff_ewidth_le.mpr ht
+  omega
+
 end TreeWidth
 
+namespace TreeDecomp
 section Adhesion
 
 /-- Given a tree decomposition (𝓧, T), the adhesion set is the intersection of bags along some edge
   in T. -/
 @[nolint unusedArguments]
-def TreeDecomp.adhesion [DecidableEq V] (t : G.TreeDecomp) {x y : t.W} (_ : t.T.Adj x y)
+def adhesion [DecidableEq V] (t : G.TreeDecomp) {x y : t.W} (_ : t.T.Adj x y)
     : Finset V := (t.𝓧 x) ∩ (t.𝓧 y)
+
+@[simp]
+lemma mem_adhesion [DecidableEq V] (t : G.TreeDecomp) {x y : t.W} (adj : t.T.Adj x y)
+    {v : V} : v ∈ t.adhesion adj ↔ v ∈ t.𝓧 x ∧ v ∈ t.𝓧 y := by
+  simp [adhesion]
+
+@[simp]
+lemma not_mem_adhesion [DecidableEq V] (t : G.TreeDecomp) {x y : t.W} (adj : t.T.Adj x y)
+    {v : V} : v ∉ t.adhesion adj ↔ v ∉ t.𝓧 x ∨ v ∉ t.𝓧 y := by
+  simp only [mem_adhesion, not_and_or]
 
 -- TODO: Restate using subtree notation.
 /-- If v is not in an adhesion set, all bags containing v must reside in some subtree cut by the
@@ -303,8 +398,6 @@ theorem adhesion_imp_separator [DecidableEq V] (t : G.TreeDecomp) {x y : t.W} (h
     ∀ p : t.T.Path a b, s(x, y) ∉ p.val.edges := by
   classical
   intro v hv a b ha hb p hxy
-  apply hv
-  simp only [TreeDecomp.adhesion, Finset.mem_inter]
   obtain ⟨q⟩ := t.connectedBags v ⟨a, ha⟩ ⟨b, hb⟩
   let q' : t.T.Walk a b := q.map (Embedding.induce _).toHom
   have hpath : q'.toPath = p := t.isTree.isAcyclic.path_unique _ _
@@ -314,12 +407,13 @@ theorem adhesion_imp_separator [DecidableEq V] (t : G.TreeDecomp) {x y : t.W} (h
     rintro w ⟨⟨w', hw'⟩, _, rfl⟩
     exact hw'
   have hp_sub : p.val.support ⊆ q'.support := hpath ▸ Walk.support_toPath_subset q'
-  exact ⟨hq_support x (hp_sub (p.val.fst_mem_support_of_mem_edges hxy)),
-    hq_support y (hp_sub (p.val.snd_mem_support_of_mem_edges hxy))⟩
+  exact hv ((t.mem_adhesion h).mpr
+    ⟨hq_support x (hp_sub (p.val.fst_mem_support_of_mem_edges hxy)),
+     hq_support y (hp_sub (p.val.snd_mem_support_of_mem_edges hxy))⟩)
 
 /-- If t is a tree decomposition with finite width, then either some bag contains every element,
 or there is a proper adhesion set between two distinct bags. -/
-theorem TreeDecomp.exists_proper_adhesion [Nonempty V] [DecidableEq V] (t : G.TreeDecomp)
+theorem exists_proper_adhesion [Nonempty V] [DecidableEq V] (t : G.TreeDecomp)
     (hw : t.ewidth ≠ ⊤) :
     t.width + 1 = Nat.card V ∨ ∃ x y : t.W, ∃ h : t.T.Adj x y, #(t.adhesion h) ≤ t.width := by
   by_cases! h : ∀ x y : t.W, t.𝓧 x = t.𝓧 y
@@ -361,11 +455,17 @@ theorem TreeDecomp.exists_proper_adhesion [Nonempty V] [DecidableEq V] (t : G.Tr
 
 /-- The "induced separation" on V of one side of a cut tree edge: the union of bags on that
 side, minus the adhesion. Parametrized by a side vertex `z : t.W`. -/
-def TreeDecomp.inducedSeparation [DecidableEq V] (t : G.TreeDecomp) {x y : t.W}
+def inducedSeparation [DecidableEq V] (t : G.TreeDecomp) {x y : t.W}
     (hadj : t.T.Adj x y) (z : t.W) : Set V :=
   (⋃ w ∈ (t.T.subtreeOfCut t.isTree {s(x, y)} z).supp, (t.𝓧 w : Set V)) \ t.adhesion hadj
 
-theorem TreeDecomp.disjoint_inducedSeparation [DecidableEq V] (t : G.TreeDecomp) {x y : t.W}
+/-
+@[simp]
+lemma mem_inducedSeparation [DecidableEq V] (t : G.TreeDecomp) {x y : t.W}
+    (hadj : t.T.Adj x y) (z : t.W) {v : V} : v ∈ t.inducedSeparation hadj z ↔
+-/
+
+theorem disjoint_inducedSeparation [DecidableEq V] (t : G.TreeDecomp) {x y : t.W}
     (hadj : t.T.Adj x y) :
     Disjoint (t.inducedSeparation hadj x) (t.inducedSeparation hadj y) := by
   rw [Set.disjoint_left]
@@ -374,24 +474,17 @@ theorem TreeDecomp.disjoint_inducedSeparation [DecidableEq V] (t : G.TreeDecomp)
   obtain ⟨⟨w₁, hw₁_supp, hv₁⟩, hv_not_adh⟩ := hvx
   obtain ⟨⟨w₂, hw₂_supp, hv₂⟩, _⟩ := hvy
   obtain ⟨p, hp_path, _⟩ := t.isTree.existsUnique_path w₁ w₂
-  have heq₁ : t.T.subtreeOfCut t.isTree {s(x, y)} w₁ = t.T.subtreeOfCut t.isTree {s(x, y)} x :=
-    hw₁_supp
-  have heq₂ : t.T.subtreeOfCut t.isTree {s(x, y)} w₂ = t.T.subtreeOfCut t.isTree {s(x, y)} y :=
-    hw₂_supp
-  have hne : t.T.subtreeOfCut t.isTree {s(x, y)} w₁ ≠ t.T.subtreeOfCut t.isTree {s(x, y)} w₂ := by
-    rw [heq₁, heq₂]
-    exact t.T.disjoint_subtreeOfCut t.isTree hadj
   exact adhesion_imp_separator t hadj v hv_not_adh w₁ w₂ hv₁ hv₂ ⟨p, hp_path⟩
-    (t.T.path_mem_cut_edge_of_subtreeOfCut_ne t.isTree hne ⟨p, hp_path⟩)
+    (t.T.path_mem_cut_edge_of_subtreeOfCut_ne t.isTree
+      (fun h => t.T.disjoint_subtreeOfCut t.isTree hadj
+        ((hw₁_supp : _ = _).symm.trans (h.trans hw₂_supp))) ⟨p, hp_path⟩)
 
-/- TODO: Golf this. -/
 /-- If u, v are in the induced separation from an edge, any walk between u, v contains some node in
     the adhesion set. -/
-lemma TreeDecomp.mem_adhesion_of_inducedSeparation_walk [DecidableEq V] (t : G.TreeDecomp)
+lemma mem_adhesion_of_inducedSeparation_walk [DecidableEq V] (t : G.TreeDecomp)
     {x y : t.W} (adj : t.T.Adj x y) : ∀ u ∈ t.inducedSeparation adj x,
     ∀ v ∈ t.inducedSeparation adj y, ∀ walk : G.Walk u v, walk.toSubgraph.verts ∩ t.adhesion adj ≠ ∅
     := by
-  classical
   intro u hu v hv walk
   by_contra h
   -- v ∉ inducedSeparation adj x by disjointness
@@ -400,39 +493,30 @@ lemma TreeDecomp.mem_adhesion_of_inducedSeparation_walk [DecidableEq V] (t : G.T
   -- Boundary dart d : d.fst ∈ inducedSeparation x, d.snd ∉ inducedSeparation x
   obtain ⟨d, hd_in, hd_fst_in, hd_snd_notin⟩ :=
     walk.exists_boundary_dart (t.inducedSeparation adj x) hu hv_notin
-  simp only [TreeDecomp.inducedSeparation, Set.mem_diff, Set.mem_iUnion₂] at hd_fst_in
-  obtain ⟨⟨w_a, hw_a_supp, hd_fst_w_a⟩, hd_fst_not_adh⟩ := hd_fst_in
-  -- Some bag w₀ contains both d.fst and d.snd
-  obtain ⟨w₀, h_d_fst_w₀, h_d_snd_w₀⟩ := t.edgeCover d.adj
-  -- w_a, w₀ both contain d.fst, so reachable via connectedBags
-  obtain ⟨q⟩ : (t.T.induce {w_1 | d.fst ∈ t.𝓧 w_1}).Reachable
-      ⟨w_a, hd_fst_w_a⟩ ⟨w₀, h_d_fst_w₀⟩ := t.connectedBags d.fst _ _
-  let q' : t.T.Walk w_a w₀ := q.map (Embedding.induce _).toHom
-  -- d.fst ∉ adhesion ⇒ q'.toPath does not contain edge s(x, y)
-  have hpath_no_xy : s(x, y) ∉ q'.toPath.val.edges :=
-    adhesion_imp_separator t adj d.fst hd_fst_not_adh w_a w₀ hd_fst_w_a h_d_fst_w₀ q'.toPath
-  -- So w_a, w₀ are in the same component after the cut
-  have hsub_eq : t.T.subtreeOfCut t.isTree {s(x, y)} w_a =
-      t.T.subtreeOfCut t.isTree {s(x, y)} w₀ := by
-    by_contra hne
-    exact hpath_no_xy (t.T.path_mem_cut_edge_of_subtreeOfCut_ne t.isTree hne q'.toPath)
-  -- Hence w₀ is in the x side
-  have hw_a_eq : t.T.subtreeOfCut t.isTree {s(x, y)} w_a =
-      t.T.subtreeOfCut t.isTree {s(x, y)} x := hw_a_supp
-  have hw₀_supp : w₀ ∈ (t.T.subtreeOfCut t.isTree {s(x, y)} x).supp :=
-    hsub_eq.symm.trans hw_a_eq
-  -- d.snd lies on the walk
+  -- Both endpoints of d lie on the walk
+  have hd_fst_walk : d.fst ∈ walk.toSubgraph.verts :=
+    walk.mem_verts_toSubgraph.mpr (walk.dart_fst_mem_support_of_mem_darts hd_in)
   have hd_snd_walk : d.snd ∈ walk.toSubgraph.verts :=
     walk.mem_verts_toSubgraph.mpr (walk.dart_snd_mem_support_of_mem_darts hd_in)
-  -- d.snd ∉ adhesion would put it back into inducedSeparation x, contradicting hd_snd_notin
-  have hd_snd_adh : d.snd ∈ ↑(t.adhesion adj) := by
-    by_contra hd_snd_not_adh
-    exact hd_snd_notin ⟨Set.mem_iUnion₂.mpr ⟨w₀, hw₀_supp, h_d_snd_w₀⟩, hd_snd_not_adh⟩
-  -- d.snd is in walk.verts ∩ adhesion, contradicting h
-  exact Set.notMem_empty d.snd (h ▸ ⟨hd_snd_walk, hd_snd_adh⟩)
+  -- By `h`, neither endpoint is in adhesion
+  have hd_fst_not_adh : d.fst ∉ ↑(t.adhesion adj) := fun h_adh =>
+    Set.notMem_empty d.fst (h ▸ ⟨hd_fst_walk, h_adh⟩)
+  have hd_snd_not_adh : d.snd ∉ ↑(t.adhesion adj) := fun h_adh =>
+    Set.notMem_empty d.snd (h ▸ ⟨hd_snd_walk, h_adh⟩)
+  -- Some bag w₀ contains both d.fst and d.snd
+  obtain ⟨w₀, h_d_fst_w₀, h_d_snd_w₀⟩ := t.edgeCover d.adj
+  -- w₀'s component is either the x-side or the y-side
+  rcases t.T.subtreeOfCut_eq_or_eq t.isTree adj w₀ with hw₀_x | hw₀_y
+  · -- x-side: d.snd ∈ ⋃ subtreeOfCut x bags + ∉ adhesion ⇒ d.snd ∈ inducedSep x, contradicting
+    exact hd_snd_notin
+      ⟨Set.mem_iUnion₂.mpr ⟨w₀, hw₀_x, h_d_snd_w₀⟩, hd_snd_not_adh⟩
+  · -- y-side: d.fst ∈ ⋃ subtreeOfCut y bags + ∉ adhesion ⇒ d.fst ∈ inducedSep y,
+    -- contradicting hd_fst_in via disjointness
+    exact Set.disjoint_left.mp (t.disjoint_inducedSeparation adj) hd_fst_in
+      ⟨Set.mem_iUnion₂.mpr ⟨w₀, hw₀_y, h_d_fst_w₀⟩, hd_fst_not_adh⟩
 
 /- TODO: Golf this or remove if unnecessary. -/
-lemma TreeDecomp.connected_walk (t : G.TreeDecomp) {u v : V} (walk : G.Walk u v) :
+lemma connected_walk (t : G.TreeDecomp) {u v : V} (walk : G.Walk u v) :
     (t.T.induce {w | (walk.toSubgraph.verts ∩ t.𝓧 w).Nonempty}).Preconnected := by
   induction walk with
   | nil =>
@@ -467,5 +551,6 @@ lemma TreeDecomp.connected_walk (t : G.TreeDecomp) {u v : V} (walk : G.Walk u v)
     exact hcon.preconnected
 
 end Adhesion
+end TreeDecomp
 
 end SimpleGraph
