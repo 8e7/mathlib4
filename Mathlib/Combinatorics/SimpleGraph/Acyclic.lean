@@ -774,6 +774,8 @@ lemma exists_walk_support_subset_of_connected_induce {s : Set V}
   obtain ⟨w⟩ := hs.preconnected ⟨u, hu⟩ ⟨v, hv⟩
   exact ⟨w.map (Embedding.induce s).toHom, w.support_map_induce_subset⟩
 
+-- TODO: if any path from two vertices in s has support contained in s, then s is connected. -
+
 /-- In a tree, the intersection of two connected induced subgraphs (when nonempty) is
 connected. -/
 lemma IsTree.connected_induce_inter {a b : Set V} (ht : G.IsTree) (hab : (a ∩ b).Nonempty)
