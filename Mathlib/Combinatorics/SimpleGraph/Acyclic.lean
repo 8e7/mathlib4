@@ -758,24 +758,6 @@ lemma subtreeOfCut_eq_or_eq {u v : V} (ht : G.IsTree) (hadj : G.Adj u v)
   rw [Set.mem_singleton_iff] at hes
   exact h_notin_drop (hes ▸ he)
 
-/-- A walk in `G.induce s` mapped to `G` via the canonical inclusion has support in `s`. -/
-lemma Walk.support_map_induce_subset {s : Set V} {u v : ↥s}
-    (w : (G.induce s).Walk u v) :
-    ∀ x ∈ (w.map (Embedding.induce s).toHom).support, x ∈ s := by
-  simp only [Walk.support_map, List.mem_map]
-  rintro _ ⟨⟨_, h⟩, _, rfl⟩
-  exact h
-
-/-- If `G.induce s` is connected and contains `u, v`, there is a walk from `u` to `v` in `G`
-whose support is contained in `s`. -/
-lemma exists_walk_support_subset_of_connected_induce {s : Set V}
-    (hs : (G.induce s).Connected) {u v : V} (hu : u ∈ s) (hv : v ∈ s) :
-    ∃ p : G.Walk u v, ∀ x ∈ p.support, x ∈ s := by
-  obtain ⟨w⟩ := hs.preconnected ⟨u, hu⟩ ⟨v, hv⟩
-  exact ⟨w.map (Embedding.induce s).toHom, w.support_map_induce_subset⟩
-
--- TODO: if any path from two vertices in s has support contained in s, then s is connected. -
-
 /-- In a tree, the intersection of two connected induced subgraphs (when nonempty) is
 connected. -/
 lemma IsTree.connected_induce_inter {a b : Set V} (ht : G.IsTree) (hab : (a ∩ b).Nonempty)
@@ -785,8 +767,8 @@ lemma IsTree.connected_induce_inter {a b : Set V} (ht : G.IsTree) (hab : (a ∩ 
   haveI : Nonempty ↥(a ∩ b) := hab.to_subtype
   refine ⟨?_⟩
   intro ⟨x, hx⟩ ⟨y, hy⟩
-  obtain ⟨wa, hwa⟩ := exists_walk_support_subset_of_connected_induce ha hx.1 hy.1
-  obtain ⟨wb, hwb⟩ := exists_walk_support_subset_of_connected_induce hb hx.2 hy.2
+  obtain ⟨wa, hwa⟩ := preconnected_induce_iff_forall_exists_walk.mp ha.preconnected hx.1 hy.1
+  obtain ⟨wb, hwb⟩ := preconnected_induce_iff_forall_exists_walk.mp hb.preconnected hx.2 hy.2
   have heq : wa.toPath = wb.toPath := ht.isAcyclic.path_unique _ _
   have hpath_ab : ∀ z ∈ wa.toPath.val.support, z ∈ a ∩ b := fun z hz =>
     ⟨hwa _ (Walk.support_toPath_subset _ hz),
@@ -801,8 +783,8 @@ lemma IsTree.mem_walk_of_inter_nonempty (hT : G.IsTree) {a b : Set V}
   classical
   intro x hx y hy w
   obtain ⟨m, hma, hmb⟩ := hab
-  obtain ⟨wxm_g, hwxm_a⟩ := exists_walk_support_subset_of_connected_induce ha hx hma
-  obtain ⟨wmy_g, hwmy_b⟩ := exists_walk_support_subset_of_connected_induce hb hmb hy
+  obtain ⟨wxm_g, hwxm_a⟩ := preconnected_induce_iff_forall_exists_walk.mp ha.preconnected hx hma
+  obtain ⟨wmy_g, hwmy_b⟩ := preconnected_induce_iff_forall_exists_walk.mp hb.preconnected hmb hy
   let W : G.Walk x y := wxm_g.append wmy_g
   have hW_eq : W.toPath = w.toPath := hT.isAcyclic.path_unique _ _
   obtain hy_in_a | hy_not_a := em (y ∈ a)
@@ -829,7 +811,8 @@ theorem IsTree.inter_nonempty_of_pairwise_three (hT : G.IsTree) {a b c : Set V}
     (a ∩ b ∩ c).Nonempty := by
   obtain ⟨ac, hac⟩ := hca
   obtain ⟨bc, hbc⟩ := hbc
-  obtain ⟨w, hw_in_c⟩ := exists_walk_support_subset_of_connected_induce hc hac.left hbc.right
+  obtain ⟨w, hw_in_c⟩ := preconnected_induce_iff_forall_exists_walk.mp hc.preconnected
+    hac.left hbc.right
   obtain ⟨v, hv⟩ : (w.toSubgraph.verts ∩ a ∩ b).Nonempty := hT.mem_walk_of_inter_nonempty ha hb hab
     ac hac.right bc hbc.left w
   have hvc : v ∈ c := hw_in_c _ (w.mem_verts_toSubgraph.mp hv.1.1)

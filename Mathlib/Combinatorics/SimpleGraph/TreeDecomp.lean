@@ -46,7 +46,6 @@ theorems in `treeWidth` form unless infinite-vertex graphs are genuinely in scop
 
 ## TODO
 
-- Refactor (add a simp lemma for treewidth ≥ k)
 - Fix proper adhesion lemma
 - Prove adhesion set is a separator (with new notation)
 
@@ -186,7 +185,8 @@ lemma ewidth_botTreeDecomp : (botTreeDecomp (V := V)).ewidth = 0 := by
   refine iSup_eq_bot.mpr ?_
   rintro (_ | w) <;> simp [botTreeDecomp]
 
-/-- If G has a tree decomposition of width n, then the same decomposition on any subgraph. -/
+/-- If G has a tree decomposition of width n, then the same decomposition applies for any
+  subgraph. -/
 @[mono]
 lemma TreeDecomp.mono {G' : SimpleGraph V} {n : ℕ∞} (h : G' ≤ G) (hG : G.hasTreeDecomp n) :
     G'.hasTreeDecomp n := by
@@ -379,32 +379,25 @@ def inducedSeparation [DecidableEq V] (t : G.TreeDecomp) {x y : t.W}
     (hadj : t.T.Adj x y) (z : t.W) : Set V :=
   (⋃ w ∈ (t.T.subtreeOfCut t.isTree {s(x, y)} z).supp, (t.𝓧 w : Set V)) \ t.adhesion hadj
 
-/-
-@[simp]
-lemma mem_inducedSeparation [DecidableEq V] (t : G.TreeDecomp) {x y : t.W}
-    (hadj : t.T.Adj x y) (z : t.W) {v : V} : v ∈ t.inducedSeparation hadj z ↔
--/
--- TODO: Restate using subtree notation.
-/-- If v is not in an adhesion set, all bags containing v must reside in some subtree cut by the
-    adhesion set's edge.
--/
-theorem adhesion_imp_separator [DecidableEq V] (t : G.TreeDecomp) {x y : t.W} (h : t.T.Adj x y) :
-    ∀ v ∉ t.adhesion h, ∀ a b : t.W, v ∈ t.𝓧 a → v ∈ t.𝓧 b →
-    ∀ p : t.T.Path a b, s(x, y) ∉ p.val.edges := by
+theorem disjoint_inducedSeparation [DecidableEq V] (t : G.TreeDecomp) {x y : t.W}
+    (hadj : t.T.Adj x y) :
+    Disjoint (t.inducedSeparation hadj x) (t.inducedSeparation hadj y) := by
   classical
-  intro v hv a b ha hb p hxy
-  obtain ⟨q⟩ := t.connectedBags v ⟨a, ha⟩ ⟨b, hb⟩
-  let q' : t.T.Walk a b := q.map (Embedding.induce _).toHom
-  have hpath : q'.toPath = p := t.isTree.isAcyclic.path_unique _ _
-  have hq_support : ∀ w ∈ q'.support, v ∈ t.𝓧 w := by
-    change ∀ w ∈ (q.map (Embedding.induce _).toHom).support, v ∈ t.𝓧 w
-    simp only [Walk.support_map, List.mem_map]
-    rintro w ⟨⟨w', hw'⟩, _, rfl⟩
-    exact hw'
-  have hp_sub : p.val.support ⊆ q'.support := hpath ▸ Walk.support_toPath_subset q'
-  exact hv ((t.mem_adhesion h).mpr
-    ⟨hq_support x (hp_sub (p.val.fst_mem_support_of_mem_edges hxy)),
-     hq_support y (hp_sub (p.val.snd_mem_support_of_mem_edges hxy))⟩)
+  rw [Set.disjoint_left]
+  intro v hvx hvy
+  simp only [TreeDecomp.inducedSeparation, Set.mem_diff, Set.mem_iUnion₂] at hvx hvy
+  obtain ⟨⟨w₁, hw₁_supp, hv₁⟩, hv_not_adh⟩ := hvx
+  obtain ⟨⟨w₂, hw₂_supp, hv₂⟩, _⟩ := hvy
+  obtain ⟨q, hq⟩ := preconnected_induce_iff_forall_exists_walk.mp (t.connectedBags v) hv₁ hv₂
+  let p : t.T.Path w₁ w₂ := q.toPath
+  have hxy : s(x, y) ∈ p.val.edges :=
+    t.T.path_mem_cut_edge_of_subtreeOfCut_ne t.isTree
+      (fun h => t.T.disjoint_subtreeOfCut t.isTree hadj
+        ((hw₁_supp : _ = _).symm.trans (h.trans hw₂_supp))) p
+  have hp_sub := Walk.support_toPath_subset q
+  exact hv_not_adh ((t.mem_adhesion hadj).mpr
+    ⟨hq x (hp_sub (p.val.fst_mem_support_of_mem_edges hxy)),
+     hq y (hp_sub (p.val.snd_mem_support_of_mem_edges hxy))⟩)
 
 /-- If t is a tree decomposition with finite width, then either some bag contains every element,
 or there is a proper adhesion set between two distinct bags. -/
@@ -448,20 +441,6 @@ theorem exists_proper_adhesion [Nonempty V] [DecidableEq V] (t : G.TreeDecomp)
         Finset.inter_subset_left |>.mpr ⟨z, hzu, fun h => hzv (Finset.mem_inter.mp h).2⟩)
       omega
 
-theorem disjoint_inducedSeparation [DecidableEq V] (t : G.TreeDecomp) {x y : t.W}
-    (hadj : t.T.Adj x y) :
-    Disjoint (t.inducedSeparation hadj x) (t.inducedSeparation hadj y) := by
-  rw [Set.disjoint_left]
-  intro v hvx hvy
-  simp only [TreeDecomp.inducedSeparation, Set.mem_diff, Set.mem_iUnion₂] at hvx hvy
-  obtain ⟨⟨w₁, hw₁_supp, hv₁⟩, hv_not_adh⟩ := hvx
-  obtain ⟨⟨w₂, hw₂_supp, hv₂⟩, _⟩ := hvy
-  obtain ⟨p, hp_path, _⟩ := t.isTree.existsUnique_path w₁ w₂
-  exact adhesion_imp_separator t hadj v hv_not_adh w₁ w₂ hv₁ hv₂ ⟨p, hp_path⟩
-    (t.T.path_mem_cut_edge_of_subtreeOfCut_ne t.isTree
-      (fun h => t.T.disjoint_subtreeOfCut t.isTree hadj
-        ((hw₁_supp : _ = _).symm.trans (h.trans hw₂_supp))) ⟨p, hp_path⟩)
-
 /-- If u, v are in the induced separation from an edge, any walk between u, v contains some node in
     the adhesion set. -/
 lemma mem_adhesion_of_inducedSeparation_walk [DecidableEq V] (t : G.TreeDecomp)
@@ -497,41 +476,6 @@ lemma mem_adhesion_of_inducedSeparation_walk [DecidableEq V] (t : G.TreeDecomp)
     -- contradicting hd_fst_in via disjointness
     exact Set.disjoint_left.mp (t.disjoint_inducedSeparation adj) hd_fst_in
       ⟨Set.mem_iUnion₂.mpr ⟨w₀, hw₀_y, h_d_fst_w₀⟩, hd_fst_not_adh⟩
-
-/- TODO: Golf this or remove if unnecessary. -/
-lemma connected_walk (t : G.TreeDecomp) {u v : V} (walk : G.Walk u v) :
-    (t.T.induce {w | (walk.toSubgraph.verts ∩ t.𝓧 w).Nonempty}).Preconnected := by
-  induction walk with
-  | nil =>
-    expose_names
-    convert t.connectedBags u_1 using 2 <;>
-      · ext w
-        simp [Walk.toSubgraph, singletonSubgraph_verts, Set.singleton_inter_nonempty]
-  | @cons u v w h_adj p ih =>
-    obtain ⟨w₀, hu₀, hv₀⟩ := t.edgeCover h_adj
-    have hSp_pre : (t.T.induce {w_1 | (p.toSubgraph.verts ∩ ↑(t.𝓧 w_1)).Nonempty}).Preconnected :=
-      ih
-    have hSu_pre : (t.T.induce {w_1 | u ∈ t.𝓧 w_1}).Preconnected := t.connectedBags u
-    have hinter : ({w_1 | (p.toSubgraph.verts ∩ ↑(t.𝓧 w_1)).Nonempty} ∩ {w_1 | u ∈ t.𝓧 w_1}
-                  : Set t.W).Nonempty :=
-      ⟨w₀, ⟨v, p.start_mem_verts_toSubgraph, hv₀⟩, hu₀⟩
-    have hcon := induce_union_connected hSp_pre hSu_pre hinter
-    have heq : {w_1 | ((Walk.cons h_adj p).toSubgraph.verts ∩ ↑(t.𝓧 w_1)).Nonempty}
-        = {w_1 | (p.toSubgraph.verts ∩ ↑(t.𝓧 w_1)).Nonempty} ∪ {w_1 | u ∈ t.𝓧 w_1} := by
-      ext w'
-      simp only [Set.mem_setOf_eq, Set.mem_union, Walk.toSubgraph, Subgraph.verts_sup,
-        subgraphOfAdj_verts, Set.union_inter_distrib_right, Set.union_nonempty,
-        Set.insert_eq, Set.singleton_inter_nonempty]
-      constructor
-      · rintro ((hu | hv) | hp)
-        · exact Or.inr hu
-        · exact Or.inl ⟨v, p.start_mem_verts_toSubgraph, hv⟩
-        · exact Or.inl hp
-      · rintro (hp | hu)
-        · exact Or.inr hp
-        · exact Or.inl (Or.inl hu)
-    rw [heq]
-    exact hcon.preconnected
 
 end Adhesion
 end TreeDecomp
