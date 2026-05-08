@@ -758,6 +758,16 @@ lemma subtreeOfCut_eq_or_eq {u v : V} (ht : G.IsTree) (hadj : G.Adj u v)
   rw [Set.mem_singleton_iff] at hes
   exact h_notin_drop (hes ▸ he)
 
+/-- In a tree, the cut by edge `(u, v)` partitions vertices: if `a` is on `u`'s side
+and `b` is separated from `a`, then `b` is on `v`'s side. -/
+lemma subtreeOfCut_eq_of_subtreeOfCut_ne {u v : V} (ht : G.IsTree) (hadj : G.Adj u v)
+    {a b : V} (hne : G.subtreeOfCut ht {s(u, v)} a ≠ G.subtreeOfCut ht {s(u, v)} b)
+    (ha : G.subtreeOfCut ht {s(u, v)} a = G.subtreeOfCut ht {s(u, v)} u) :
+    G.subtreeOfCut ht {s(u, v)} b = G.subtreeOfCut ht {s(u, v)} v := by
+  rcases G.subtreeOfCut_eq_or_eq ht hadj b with hb_u | hb_v
+  · exact absurd (ha.trans hb_u.symm) hne
+  · exact hb_v
+
 /-- In a tree, the intersection of two connected induced subgraphs (when nonempty) is
 connected. -/
 lemma IsTree.connected_induce_inter {a b : Set V} (ht : G.IsTree) (hab : (a ∩ b).Nonempty)

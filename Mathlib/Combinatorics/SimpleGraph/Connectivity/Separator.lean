@@ -16,13 +16,12 @@ public import Mathlib.Combinatorics.SimpleGraph.Connectivity.Connected
 
 ## Main definitions
 
+- `SimpleGraph.IsSeparator s u v` : Predicate that set s separates vertices u, v.
+  Note that u ∉ s, v ∉ s must be satisfied.
 
 ## Main statements
 
 - isSeparator_walk_cover : s is a (u, v)-separator if any walk from u to v visits s
-
-TO BE PROVEN:
-- IsSeparator.exists_iff_not_adj : u v has a separator iff u and v are not adjacent
 
 ## Tags
 
