@@ -720,9 +720,9 @@ lemma disjoint_subtreeOfCut {u v : V} (ht : G.IsTree) (hadj : G.Adj u v) :
 
 /-- In a tree, any path between two vertices in different subtrees (formed by cutting an edge)
 must include the cut edge. -/
-lemma path_mem_cut_edge_of_subtreeOfCut_ne {u v : V} (ht : G.IsTree)
-    {a b : V} (hne : G.subtreeOfCut ht {s(u, v)} a ≠ G.subtreeOfCut ht {s(u, v)} b)
-    (p : G.Path a b) : s(u, v) ∈ p.val.edges := by
+lemma path_mem_cutEdge_of_subtreeOfCut_ne {u v : V} (ht : G.IsTree) {a b : V} (p : G.Path a b) :
+    G.subtreeOfCut ht {s(u, v)} a ≠ G.subtreeOfCut ht {s(u, v)} b → s(u, v) ∈ p.val.edges := by
+  intro hne
   by_contra h_no
   refine hne (ConnectedComponent.sound (p.val.toDeleteEdges _ ?_).reachable)
   intro e he hes
@@ -740,7 +740,7 @@ lemma subtreeOfCut_eq_or_eq {u v : V} (ht : G.IsTree) (hadj : G.Adj u v)
   right
   obtain ⟨p, hp_path, _⟩ := ht.existsUnique_path u z
   have h_in : s(u, v) ∈ p.edges :=
-    G.path_mem_cut_edge_of_subtreeOfCut_ne ht (Ne.symm hzu) ⟨p, hp_path⟩
+    G.path_mem_cutEdge_of_subtreeOfCut_ne ht ⟨p, hp_path⟩ (Ne.symm hzu)
   have hv_supp : v ∈ p.support := p.snd_mem_support_of_mem_edges h_in
   -- The unique path from `u` to `v` is the single edge; equating it with `p.takeUntil v`
   -- (also a path `u → v`) shows `s(u, v) ∈ takeUntil v.edges`
@@ -767,6 +767,38 @@ lemma subtreeOfCut_eq_of_subtreeOfCut_ne {u v : V} (ht : G.IsTree) (hadj : G.Adj
   rcases G.subtreeOfCut_eq_or_eq ht hadj b with hb_u | hb_v
   · exact absurd (ha.trans hb_u.symm) hne
   · exact hb_v
+
+/-- In a tree, if a dart `d` lies on a path from `a` to `b`, then deleting the dart's edge
+puts `a` in `d.fst`'s subtree and `b` in `d.snd`'s subtree. -/
+theorem subtreeOfCut_endpoints_of_dart_mem_path {a b : V} (ht : G.IsTree)
+    (p : G.Path a b) {d : G.Dart} (hd : d ∈ p.val.darts) :
+    G.subtreeOfCut ht {d.edge} a = G.subtreeOfCut ht {d.edge} d.fst ∧
+    G.subtreeOfCut ht {d.edge} b = G.subtreeOfCut ht {d.edge} d.snd := by
+  obtain ⟨w, hw⟩ := p
+  induction w with
+  | nil => exact (List.not_mem_nil hd).elim
+  | @cons a' x b' h_adj rest ih =>
+    rw [Walk.cons_isPath_iff] at hw
+    obtain ⟨hw_rest, hw_a_not_in⟩ := hw
+    rw [Walk.darts_cons, List.mem_cons] at hd
+    rcases hd with rfl | hd_in_rest
+    · refine ⟨rfl, ?_⟩
+      have h_no_rep : s(a', x) ∉ rest.edges :=
+        fun h_in => hw_a_not_in (rest.fst_mem_support_of_mem_edges h_in)
+      have rest_lift : (G.deleteEdges {s(a', x)}).Walk x b' :=
+        rest.toDeleteEdges _ (fun e he hes => by
+          rw [Set.mem_singleton_iff] at hes
+          exact h_no_rep (hes ▸ he))
+      exact (ConnectedComponent.sound rest_lift.reachable).symm
+    · obtain ⟨ih1, ih2⟩ := ih hw_rest hd_in_rest
+      refine ⟨?_, ih2⟩
+      have h_neq : s(a', x) ≠ d.edge := by
+        intro h_eq
+        have : s(a', x) ∈ rest.edges := h_eq ▸ List.mem_map.mpr ⟨d, hd_in_rest, rfl⟩
+        exact hw_a_not_in (rest.fst_mem_support_of_mem_edges this)
+      have h_adj_del : (G.deleteEdges {d.edge}).Adj a' x :=
+        SimpleGraph.deleteEdges_adj.mpr ⟨h_adj, fun h => h_neq (Set.mem_singleton_iff.mp h)⟩
+      exact ConnectedComponent.sound (Walk.cons h_adj_del Walk.nil).reachable |>.trans ih1
 
 /-- In a tree, the intersection of two connected induced subgraphs (when nonempty) is
 connected. -/

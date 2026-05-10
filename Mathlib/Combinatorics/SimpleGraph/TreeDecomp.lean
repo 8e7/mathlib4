@@ -92,6 +92,8 @@ structure TreeDecomp (G : SimpleGraph V) where
   /-- For any vertex v in G, the set of bags that contain v is preconnected. -/
   connectedBags : ∀ v : V, (T.induce ({w | v ∈ 𝓧 w})).Preconnected
 
+instance (t : G.TreeDecomp) : Nonempty t.W := t.isTree.connected.nonempty
+
 /-- The width of a tree decomposition, as an extended natural number:
 the maximum bag size minus one. -/
 noncomputable def TreeDecomp.ewidth (t : TreeDecomp G) : ℕ∞ :=
@@ -106,6 +108,12 @@ lemma TreeDecomp.ewidth_eq (t : TreeDecomp G) :
 lemma TreeDecomp.ewidth_ge {k : ℕ} (t : TreeDecomp G) :
     (∃ w : t.W, #(t.𝓧 w) - 1 ≥ k) → t.ewidth ≥ k :=
   fun ⟨w, hw⟩ ↦ le_iSup_of_le w (by exact_mod_cast hw)
+
+lemma TreeDecomp.ewidth_le {k : ℕ} (t : TreeDecomp G) :
+    (∀ w : t.W, #(t.𝓧 w) - 1 ≤ k) → t.ewidth ≤ k := by
+  intro h
+  rw [ewidth_eq, iSup_le_iff]
+  exact_mod_cast h
 
 lemma TreeDecomp.card_bag_le (t : G.TreeDecomp) (w : t.W) :
     #(t.𝓧 w) ≤ t.ewidth + 1 := by
@@ -325,6 +333,9 @@ lemma treeWidth_bot : (⊥ : SimpleGraph V).treeWidth = 0 := by
       (zero_le _)
   simp [treeWidth, this]
 
+end TreeWidth
+
+section Clique
 private lemma TreeDecomp.exists_bag_univ_of_forall_edgeCover [Nonempty V] [Fintype V]
     (t : G.TreeDecomp)
     (h : ∀ u v : V, ∃ w : t.W, u ∈ t.𝓧 w ∧ v ∈ t.𝓧 w) : ∃ w : t.W, t.𝓧 w = univ := by
@@ -337,6 +348,46 @@ private lemma TreeDecomp.exists_bag_univ_of_forall_edgeCover [Nonempty V] [Finty
     (fun i _ j _ ↦ h i j)
   refine ⟨w, Finset.eq_univ_iff_forall.mpr ?_⟩
   simpa [f] using hw
+
+lemma TreeDecomp.width_lt_iff_exists_not_edgeCover [Nonempty V] [Finite V] (t : G.TreeDecomp) :
+    t.ewidth ≠ ⊤ ∧ t.width < Nat.card V - 1 ↔ (∃ u v : V, ∀ w : t.W, u ∉ t.𝓧 w ∨ v ∉ t.𝓧 w) := by
+  classical
+  letI := Fintype.ofFinite V
+  constructor
+  · rintro ⟨h_fin, h⟩
+    by_contra h_cover
+    push Not at h_cover
+    have h_cover' : ∀ u v : V, ∃ w : t.W, u ∈ t.𝓧 w ∧ v ∈ t.𝓧 w := fun u v => by
+      obtain ⟨w, hw⟩ := h_cover u v
+      exact ⟨w, by tauto⟩
+    obtain ⟨w, hw⟩ := t.exists_bag_univ_of_forall_edgeCover h_cover'
+    have h_card : #(t.𝓧 w) ≤ t.width + 1 := t.card_bag_le_width_of_finite w
+    rw [hw, Finset.card_univ, ← Nat.card_eq_fintype_card] at h_card
+    omega
+  · rintro ⟨u, v, h⟩
+    obtain ⟨w₀, hw₀⟩ := t.vertexCover u
+    have h_uv : u ≠ v := by
+      rintro rfl
+      rcases h w₀ with h' | h' <;> exact h' hw₀
+    have h_card_V : 2 ≤ Nat.card V := by
+      rw [Nat.card_eq_fintype_card, ← Finset.card_univ]
+      exact Finset.one_lt_card.mpr ⟨u, Finset.mem_univ _, v, Finset.mem_univ _, h_uv⟩
+    have h_bag_card : ∀ w : t.W, #(t.𝓧 w) ≤ Nat.card V - 1 := fun w => by
+      have key : ∀ a, a ∉ t.𝓧 w → #(t.𝓧 w) ≤ Nat.card V - 1 := fun a ha =>
+        calc #(t.𝓧 w)
+          _ ≤ #((Finset.univ : Finset V).erase a) := Finset.card_le_card (fun x hx =>
+              Finset.mem_erase.mpr ⟨fun heq => ha (heq ▸ hx), Finset.mem_univ x⟩)
+          _ = Nat.card V - 1 := by
+            rw [Finset.card_erase_of_mem (Finset.mem_univ a), Finset.card_univ,
+              Nat.card_eq_fintype_card]
+      exact (h w).elim (key u) (key v)
+    have h_ewidth_le : t.ewidth ≤ ((Nat.card V - 2 : ℕ) : ℕ∞) :=
+      t.ewidth_le (fun w => by have := h_bag_card w; omega)
+    have h_fin : t.ewidth ≠ ⊤ := (h_ewidth_le.trans_lt (ENat.coe_lt_top _)).ne
+    refine ⟨h_fin, ?_⟩
+    have h_width_le : t.width ≤ Nat.card V - 2 := by
+      rw [t.width_le_iff_ewidth_le]; exact h_ewidth_le
+    omega
 
 theorem treewidth_top [Fintype V] : (⊤ : SimpleGraph V).treeWidth = card V - 1 := by
   refine le_antisymm treeWidth_le_card ?_
@@ -354,42 +405,42 @@ theorem treewidth_top [Fintype V] : (⊤ : SimpleGraph V).treeWidth = card V - 1
   rw [hw, Finset.card_univ] at h_contra
   omega
 
-end TreeWidth
+end Clique
 
 namespace TreeDecomp
 section Adhesion
 
-variable (t : G.TreeDecomp)
+variable [DecidableEq V] (t : G.TreeDecomp)
 /-- Given a tree decomposition (𝓧, T), the adhesion set is the intersection of bags along some edge
   in T. -/
 @[nolint unusedArguments]
-def adhesion [DecidableEq V] {x y : t.W} (_ : t.T.Adj x y)
+def adhesion {x y : t.W} (_ : t.T.Adj x y)
     : Finset V := (t.𝓧 x) ∩ (t.𝓧 y)
 
 @[simp]
-lemma mem_adhesion [DecidableEq V] {x y : t.W} (adj : t.T.Adj x y)
+lemma mem_adhesion {x y : t.W} (adj : t.T.Adj x y)
     {v : V} : v ∈ t.adhesion adj ↔ v ∈ t.𝓧 x ∧ v ∈ t.𝓧 y := by
   simp [adhesion]
 
 @[simp]
-lemma not_mem_adhesion [DecidableEq V] {x y : t.W} (adj : t.T.Adj x y)
+lemma not_mem_adhesion {x y : t.W} (adj : t.T.Adj x y)
     {v : V} : v ∉ t.adhesion adj ↔ v ∉ t.𝓧 x ∨ v ∉ t.𝓧 y := by
   simp only [mem_adhesion, not_and_or]
 
 /-- The "induced separation" on V of one side of a cut tree edge: the union of bags on that
 side, minus the adhesion. Parametrized by a side vertex `z : t.W`. -/
-def inducedSeparation [DecidableEq V] {x y : t.W}
+def inducedSeparation {x y : t.W}
     (hadj : t.T.Adj x y) (z : t.W) : Set V :=
   (⋃ w ∈ (t.T.subtreeOfCut t.isTree {s(x, y)} z).supp, (t.𝓧 w : Set V)) \ t.adhesion hadj
 
 @[simp]
-lemma mem_inducedSeparation [DecidableEq V] {x y : t.W} {v : V} (hadj : t.T.Adj x y) (z : t.W) :
+lemma mem_inducedSeparation {x y : t.W} {v : V} (hadj : t.T.Adj x y) (z : t.W) :
     v ∈ t.inducedSeparation hadj z ↔ v ∉ t.adhesion hadj ∧
     ∃ w ∈ (t.T.subtreeOfCut t.isTree {s(x, y)} z).supp, v ∈ t.𝓧 w := by
   rw [inducedSeparation, Set.mem_diff, and_comm]
   simp only [Set.mem_iUnion, Finset.mem_coe, exists_prop]
 
-theorem disjoint_inducedSeparation [DecidableEq V] {x y : t.W}
+theorem disjoint_inducedSeparation {x y : t.W}
     (hadj : t.T.Adj x y) :
     Disjoint (t.inducedSeparation hadj x) (t.inducedSeparation hadj y) := by
   classical
@@ -400,9 +451,9 @@ theorem disjoint_inducedSeparation [DecidableEq V] {x y : t.W}
   obtain ⟨q, hq⟩ := preconnected_induce_iff_forall_exists_walk.mp (t.connectedBags v) hv₁ hv₂
   let p : t.T.Path w₁ w₂ := q.toPath
   have hxy : s(x, y) ∈ p.val.edges :=
-    t.T.path_mem_cut_edge_of_subtreeOfCut_ne t.isTree
+    t.T.path_mem_cutEdge_of_subtreeOfCut_ne t.isTree p
       (fun h => t.T.disjoint_subtreeOfCut t.isTree hadj
-        ((hw₁_supp : _ = _).symm.trans (h.trans hw₂_supp))) p
+        ((hw₁_supp : _ = _).symm.trans (h.trans hw₂_supp)))
   have hp_sub := Walk.support_toPath_subset q
   exact hv_not_adh ((t.mem_adhesion hadj).mpr
     ⟨hq x (hp_sub (p.val.fst_mem_support_of_mem_edges hxy)),
@@ -412,8 +463,8 @@ theorem disjoint_inducedSeparation [DecidableEq V] {x y : t.W}
   1. Its size is ≤ t.width
   2. u and v are in different sides of the induced separation.
 -/
--- TODO: Golf, remove Finite V.
-theorem exists_proper_adhesion [Nonempty V] [Finite V] [DecidableEq V] (u v : V) :
+-- TODO: Remove Finite V.
+theorem exists_proper_adhesion [Nonempty V] [Finite V] (u v : V) :
     ¬(∃ w : t.W, u ∈ t.𝓧 w ∧ v ∈ t.𝓧 w) →
     (∃ x y : t.W, ∃ h : t.T.Adj x y, #(t.adhesion h) ≤ t.width ∧
     u ∈ t.inducedSeparation h x ∧ v ∈ t.inducedSeparation h y) := by
@@ -422,61 +473,29 @@ theorem exists_proper_adhesion [Nonempty V] [Finite V] [DecidableEq V] (u v : V)
     have h_finite := card_bag_le_width_of_finite t
     obtain ⟨w₀, hw₀⟩ := t.vertexCover u
     obtain ⟨w₁, hw₁⟩ := t.vertexCover v
-    have h_sep' : ∀ (w : t.W), v ∈ t.𝓧 w → u ∉ t.𝓧 w := by
-      intro w
-      contrapose
-      exact h_sep w
     obtain ⟨p, hp_path, _⟩ := t.isTree.existsUnique_path w₀ w₁
-    obtain ⟨d, hd_in, hfst, hsnd⟩ := p.exists_boundary_dart {w | u ∈ t.𝓧 w} hw₀ (h_sep' w₁ hw₁)
+    obtain ⟨d, hd_in, hfst, hsnd⟩ :=
+      p.exists_boundary_dart {w | u ∈ t.𝓧 w} hw₀ (h_sep w₁ · hw₁)
     refine ⟨d.fst, d.snd, d.adj, ?_⟩
     constructor
-    · have hfst' : u ∈ t.𝓧 d.fst := hfst
-      have hsnd' : u ∉ t.𝓧 d.snd := hsnd
-      have huv : t.𝓧 d.fst ≠ t.𝓧 d.snd := fun heq => hsnd' (heq ▸ hfst')
+    · simp only [Set.mem_setOf_eq] at hfst hsnd
+      have huv : t.𝓧 d.fst ≠ t.𝓧 d.snd := fun heq => hsnd (heq ▸ hfst)
       rw [adhesion]
       have hbu := t.card_bag_le_width_of_finite d.fst
       have hbv := t.card_bag_le_width_of_finite d.snd
-      by_cases h_sub : t.𝓧 d.fst ⊆ t.𝓧 d.snd
-      · rw [Finset.inter_eq_left.mpr h_sub]
-        have := Finset.card_lt_card (h_sub.ssubset_of_ne huv)
-        omega
-      · obtain ⟨z, hzu, hzv⟩ := Finset.not_subset.mp h_sub
-        have := Finset.card_lt_card (Finset.ssubset_iff_of_subset
-          Finset.inter_subset_left |>.mpr ⟨z, hzu, fun h => hzv (Finset.mem_inter.mp h).2⟩)
-        omega
+      have hcard_eq := Finset.card_union_add_card_inter (t.𝓧 d.fst) (t.𝓧 d.snd)
+      have hcard_lt : #(t.𝓧 d.fst ∩ t.𝓧 d.snd) < #(t.𝓧 d.fst ∪ t.𝓧 d.snd) :=
+        Finset.card_lt_card (inf_lt_sup.mpr huv)
+      omega
     · simp only [mem_inducedSeparation, not_mem_adhesion]
-      refine ⟨⟨Or.inr hsnd, d.fst, rfl, hfst⟩, Or.inl (fun hv => h_sep' _ hv hfst), w₁, ?_, hw₁⟩
-      classical
-      -- u-bag walk from w₀ to d.fst avoids d.snd (and hence the cut edge)
-      obtain ⟨q, hq⟩ := preconnected_induce_iff_forall_exists_walk.mp
-        (t.connectedBags u) hw₀ hfst
-      have hq_no_cut : ∀ e ∈ q.edges, e ∉ ({s(d.fst, d.snd)} : Set _) := fun e he hes => by
-        rw [Set.mem_singleton_iff] at hes
-        exact hsnd (hq _ (q.snd_mem_support_of_mem_edges (hes ▸ he)))
-      have hw₀_eq_dfst := ConnectedComponent.sound (q.toDeleteEdges _ hq_no_cut).reachable
-      -- Cut edge ∈ p.edges since dart d ∈ p.darts
-      have h_cut_in_p : s(d.fst, d.snd) ∈ p.edges := List.mem_map.mpr ⟨d, hd_in, rfl⟩
-      -- Separation: w₀ and w₁ are in different subtrees of the cut
-      have hne : t.T.subtreeOfCut t.isTree {s(d.fst, d.snd)} w₀ ≠
-          t.T.subtreeOfCut t.isTree {s(d.fst, d.snd)} w₁ := by
-        intro hab
-        obtain ⟨r⟩ : (t.T.deleteEdges _).Reachable w₀ w₁ := ConnectedComponent.exact hab
-        let r_lift : t.T.Walk w₀ w₁ := r.mapLe (t.T.deleteEdges_le _)
-        have hr_no_cut : s(d.fst, d.snd) ∉ r_lift.edges := by
-          rw [show r_lift.edges = r.edges from Walk.edges_mapLe_eq_edges _ _]
-          intro h_in
-          have := r.edges_subset_edgeSet h_in
-          rw [edgeSet_deleteEdges] at this
-          exact this.2 rfl
-        have h_unique : r_lift.toPath = ⟨p, hp_path⟩ := t.isTree.isAcyclic.path_unique _ _
-        exact hr_no_cut (Walk.edges_toPath_subset r_lift (h_unique ▸ h_cut_in_p))
-      exact t.T.subtreeOfCut_eq_of_subtreeOfCut_ne t.isTree d.adj hne hw₀_eq_dfst
+      refine ⟨⟨Or.inr hsnd, d.fst, rfl, hfst⟩, Or.inl (h_sep d.fst hfst), w₁, ?_, hw₁⟩
+      exact (t.T.subtreeOfCut_endpoints_of_dart_mem_path t.isTree ⟨p, hp_path⟩ hd_in).2
 
 /-- If u, v are in the induced separation from an edge, any walk between u, v contains some node in
     the adhesion set. -/
-lemma mem_adhesion_of_inducedSeparation_walk [DecidableEq V]
-    {x y : t.W} (adj : t.T.Adj x y) : ∀ u ∈ t.inducedSeparation adj x,
-    ∀ v ∈ t.inducedSeparation adj y, ∀ walk : G.Walk u v, walk.toSubgraph.verts ∩ t.adhesion adj ≠ ∅
+lemma mem_adhesion_of_inducedSeparation_walk {x y : t.W} (adj : t.T.Adj x y) :
+    ∀ u ∈ t.inducedSeparation adj x, ∀ v ∈ t.inducedSeparation adj y,
+    ∀ walk : G.Walk u v, walk.toSubgraph.verts ∩ t.adhesion adj ≠ ∅
     := by
   intro u hu v hv walk
   by_contra h
@@ -508,7 +527,7 @@ lemma mem_adhesion_of_inducedSeparation_walk [DecidableEq V]
     exact Set.disjoint_left.mp (t.disjoint_inducedSeparation adj) hd_fst_in
       ⟨Set.mem_iUnion₂.mpr ⟨w₀, hw₀_y, h_d_fst_w₀⟩, hd_fst_not_adh⟩
 
-theorem adhesion_imp_separator [Nonempty V] [Finite V] [DecidableEq V] (u v : V)
+theorem adhesion_imp_separator [Nonempty V] [Finite V] (u v : V)
     (h_sep : ∀ w : t.W, u ∉ t.𝓧 w ∨ v ∉ t.𝓧 w) :
     ∃ x y : t.W, ∃ h : t.T.Adj x y, #(t.adhesion h) < t.width ∧
     G.IsSeparator (t.adhesion h) u v := by
