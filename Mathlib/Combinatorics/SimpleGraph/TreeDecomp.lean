@@ -446,55 +446,56 @@ theorem treewidth_top [Fintype V] : (⊤ : SimpleGraph V).treeWidth = card V - 1
 
 end Clique
 
-namespace TreeDecomp
 section Adhesion
+namespace TreeDecomp
 
 variable [DecidableEq V] (t : G.TreeDecomp)
-/-- Given a tree decomposition (𝓧, T), the adhesion set is the intersection of bags along some edge
-  in T. -/
+
+/-- Given a tree decomposition (𝓧, T) and some edge `e`, `t.adhesion e` is the intersection of bags
+  between endpoints of `e`. -/
 @[nolint unusedArguments]
 def adhesion {x y : t.W} (_ : t.T.Adj x y)
     : Finset V := (t.𝓧 x) ∩ (t.𝓧 y)
 
 @[simp]
-lemma mem_adhesion {x y : t.W} (adj : t.T.Adj x y)
-    {v : V} : v ∈ t.adhesion adj ↔ v ∈ t.𝓧 x ∧ v ∈ t.𝓧 y := by
+lemma mem_adhesion {x y : t.W} (e : t.T.Adj x y)
+    {v : V} : v ∈ t.adhesion e ↔ v ∈ t.𝓧 x ∧ v ∈ t.𝓧 y := by
   simp [adhesion]
 
 @[simp]
-lemma not_mem_adhesion {x y : t.W} (adj : t.T.Adj x y)
-    {v : V} : v ∉ t.adhesion adj ↔ v ∉ t.𝓧 x ∨ v ∉ t.𝓧 y := by
+lemma not_mem_adhesion {x y : t.W} (e : t.T.Adj x y)
+    {v : V} : v ∉ t.adhesion e ↔ v ∉ t.𝓧 x ∨ v ∉ t.𝓧 y := by
   simp only [mem_adhesion, not_and_or]
 
 /-- The "induced separation" on V of one side of a cut tree edge: the union of bags on that
-side, minus the adhesion. Parametrized by a side vertex `z : t.W`. -/
+  side, minus the adhesion. Parametrized by a side vertex `z : t.W`. -/
 def inducedSeparation {x y : t.W}
-    (hadj : t.T.Adj x y) (z : t.W) : Set V :=
-  (⋃ w ∈ (t.T.subtreeOfCut t.isTree {s(x, y)} z).supp, (t.𝓧 w : Set V)) \ t.adhesion hadj
+    (e : t.T.Adj x y) (z : t.W) : Set V :=
+  (⋃ w ∈ (t.T.subtreeOfCut t.isTree {s(x, y)} z).supp, (t.𝓧 w : Set V)) \ t.adhesion e
 
 @[simp]
-lemma mem_inducedSeparation {x y : t.W} {v : V} (hadj : t.T.Adj x y) (z : t.W) :
-    v ∈ t.inducedSeparation hadj z ↔ v ∉ t.adhesion hadj ∧
+lemma mem_inducedSeparation {x y : t.W} {v : V} (e : t.T.Adj x y) (z : t.W) :
+    v ∈ t.inducedSeparation e z ↔ v ∉ t.adhesion e ∧
     ∃ w ∈ (t.T.subtreeOfCut t.isTree {s(x, y)} z).supp, v ∈ t.𝓧 w := by
   rw [inducedSeparation, Set.mem_diff, and_comm]
   simp only [Set.mem_iUnion, Finset.mem_coe, exists_prop]
 
 theorem disjoint_inducedSeparation {x y : t.W}
-    (hadj : t.T.Adj x y) :
-    Disjoint (t.inducedSeparation hadj x) (t.inducedSeparation hadj y) := by
+    (e : t.T.Adj x y) :
+    Disjoint (t.inducedSeparation e x) (t.inducedSeparation e y) := by
   classical
   rw [Set.disjoint_left]
   intro v hvx hvy
-  obtain ⟨hv_not_adh, w₁, hw₁_supp, hv₁⟩ := (t.mem_inducedSeparation hadj x).mp hvx
-  obtain ⟨_, w₂, hw₂_supp, hv₂⟩ := (t.mem_inducedSeparation hadj y).mp hvy
+  obtain ⟨hv_not_adh, w₁, hw₁_supp, hv₁⟩ := (t.mem_inducedSeparation e x).mp hvx
+  obtain ⟨_, w₂, hw₂_supp, hv₂⟩ := (t.mem_inducedSeparation e y).mp hvy
   obtain ⟨q, hq⟩ := preconnected_induce_iff_forall_exists_walk.mp (t.connectedBags v) hv₁ hv₂
   let p : t.T.Path w₁ w₂ := q.toPath
   have hxy : s(x, y) ∈ p.val.edges :=
     t.T.path_mem_cutEdge_of_subtreeOfCut_ne t.isTree p
-      (fun h => t.T.disjoint_subtreeOfCut t.isTree hadj
+      (fun h => t.T.disjoint_subtreeOfCut t.isTree e
         ((hw₁_supp : _ = _).symm.trans (h.trans hw₂_supp)))
   have hp_sub := Walk.support_toPath_subset q
-  exact hv_not_adh ((t.mem_adhesion hadj).mpr
+  exact hv_not_adh ((t.mem_adhesion e).mpr
     ⟨hq x (hp_sub (p.val.fst_mem_support_of_mem_edges hxy)),
      hq y (hp_sub (p.val.snd_mem_support_of_mem_edges hxy))⟩)
 
@@ -502,7 +503,6 @@ theorem disjoint_inducedSeparation {x y : t.W}
   1. Its size is ≤ t.width
   2. u and v are in different sides of the induced separation.
 -/
--- TODO: Remove Finite V.
 theorem exists_proper_adhesion [Nonempty V] [Finite V] (u v : V) :
     ¬(∃ w : t.W, u ∈ t.𝓧 w ∧ v ∈ t.𝓧 w) →
     (∃ x y : t.W, ∃ h : t.T.Adj x y, #(t.adhesion h) ≤ t.width ∧
@@ -530,49 +530,57 @@ theorem exists_proper_adhesion [Nonempty V] [Finite V] (u v : V) :
       exact (t.T.subtreeOfCut_endpoints_of_dart_mem_path t.isTree ⟨p, hp_path⟩ hd_in).2
 
 /-- If u, v are in the induced separation from an edge, any walk between u, v contains some node in
-    the adhesion set. -/
-lemma mem_adhesion_of_inducedSeparation_walk {x y : t.W} (adj : t.T.Adj x y) :
-    ∀ u ∈ t.inducedSeparation adj x, ∀ v ∈ t.inducedSeparation adj y,
-    ∀ walk : G.Walk u v, walk.toSubgraph.verts ∩ t.adhesion adj ≠ ∅
+  the adhesion set. -/
+lemma mem_adhesion_of_inducedSeparation_walk {u v : V} {x y : t.W} (e : t.T.Adj x y)
+    (hu : u ∈ t.inducedSeparation e x) (hv : v ∈ t.inducedSeparation e y) :
+    ∀ walk : G.Walk u v, walk.toSubgraph.verts ∩ t.adhesion e ≠ ∅
     := by
-  intro u hu v hv walk
+  intro walk
   by_contra h
-  -- v ∉ inducedSeparation adj x by disjointness
-  have hv_notin : v ∉ t.inducedSeparation adj x :=
-    Set.disjoint_right.mp (t.disjoint_inducedSeparation adj) hv
+  -- v ∉ inducedSeparation e x by disjointness
+  have hv_notin : v ∉ t.inducedSeparation e x :=
+    Set.disjoint_right.mp (t.disjoint_inducedSeparation e) hv
   -- Boundary dart d : d.fst ∈ inducedSeparation x, d.snd ∉ inducedSeparation x
   obtain ⟨d, hd_in, hd_fst_in, hd_snd_notin⟩ :=
-    walk.exists_boundary_dart (t.inducedSeparation adj x) hu hv_notin
+    walk.exists_boundary_dart (t.inducedSeparation e x) hu hv_notin
   -- Both endpoints of d lie on the walk
   have hd_fst_walk : d.fst ∈ walk.toSubgraph.verts :=
     walk.mem_verts_toSubgraph.mpr (walk.dart_fst_mem_support_of_mem_darts hd_in)
   have hd_snd_walk : d.snd ∈ walk.toSubgraph.verts :=
     walk.mem_verts_toSubgraph.mpr (walk.dart_snd_mem_support_of_mem_darts hd_in)
   -- By `h`, neither endpoint is in adhesion
-  have hd_fst_not_adh : d.fst ∉ ↑(t.adhesion adj) := fun h_adh =>
+  have hd_fst_not_adh : d.fst ∉ ↑(t.adhesion e) := fun h_adh =>
     Set.notMem_empty d.fst (h ▸ ⟨hd_fst_walk, h_adh⟩)
-  have hd_snd_not_adh : d.snd ∉ ↑(t.adhesion adj) := fun h_adh =>
+  have hd_snd_not_adh : d.snd ∉ ↑(t.adhesion e) := fun h_adh =>
     Set.notMem_empty d.snd (h ▸ ⟨hd_snd_walk, h_adh⟩)
   -- Some bag w₀ contains both d.fst and d.snd
   obtain ⟨w₀, h_d_fst_w₀, h_d_snd_w₀⟩ := t.edgeCover d.adj
   -- w₀'s component is either the x-side or the y-side
-  rcases t.T.subtreeOfCut_eq_or_eq t.isTree adj w₀ with hw₀_x | hw₀_y
+  rcases t.T.subtreeOfCut_eq_or_eq t.isTree e w₀ with hw₀_x | hw₀_y
   · -- x-side: d.snd ∈ ⋃ subtreeOfCut x bags + ∉ adhesion ⇒ d.snd ∈ inducedSep x, contradicting
     exact hd_snd_notin
       ⟨Set.mem_iUnion₂.mpr ⟨w₀, hw₀_x, h_d_snd_w₀⟩, hd_snd_not_adh⟩
   · -- y-side: d.fst ∈ ⋃ subtreeOfCut y bags + ∉ adhesion ⇒ d.fst ∈ inducedSep y,
     -- contradicting hd_fst_in via disjointness
-    exact Set.disjoint_left.mp (t.disjoint_inducedSeparation adj) hd_fst_in
+    exact Set.disjoint_left.mp (t.disjoint_inducedSeparation e) hd_fst_in
       ⟨Set.mem_iUnion₂.mpr ⟨w₀, hw₀_y, h_d_fst_w₀⟩, hd_fst_not_adh⟩
 
-theorem adhesion_imp_separator [Nonempty V] [Finite V] (u v : V)
-    (h_sep : ∀ w : t.W, u ∉ t.𝓧 w ∨ v ∉ t.𝓧 w) :
-    ∃ x y : t.W, ∃ h : t.T.Adj x y, #(t.adhesion h) < t.width ∧
-    G.IsSeparator (t.adhesion h) u v := by
-  sorry
+/-- If u and v are on different sides of the induced separation from an edge, then its adhesion
+  set separates u and v on the graph. -/
+theorem adhesion_imp_separator [Nonempty V] [Finite V] {u v : V} {x y : t.W} (e : t.T.Adj x y)
+    (hu : u ∈ t.inducedSeparation e x) (hv : v ∈ t.inducedSeparation e y) :
+    G.IsSeparator (t.adhesion e) u v := by
+  rw [isSeparator_iff_walk_cover]
+  have mem_adhesion := t.mem_adhesion_of_inducedSeparation_walk e hu hv
+  simp only [mem_inducedSeparation] at hu hv
+  refine ⟨hu.left, ⟨hv.left, ?_⟩⟩
+  intro walk
+  replace mem_adhesion := mem_adhesion walk
+  rw [← Set.nonempty_iff_ne_empty, Set.inter_nonempty] at mem_adhesion
+  obtain ⟨x, ⟨xwalk, xmem⟩⟩ := mem_adhesion
+  exact ⟨x, ⟨xmem, xwalk⟩⟩
 
-
-end Adhesion
 end TreeDecomp
+end Adhesion
 
 end SimpleGraph
