@@ -8,6 +8,7 @@ module
 public import Mathlib.Combinatorics.SimpleGraph.Acyclic
 public import Mathlib.Combinatorics.SimpleGraph.Connectivity.Separator
 public import Mathlib.Combinatorics.SimpleGraph.Maps
+public import Mathlib.Combinatorics.SimpleGraph.Paths
 public import Mathlib.Combinatorics.SimpleGraph.Star
 public import Mathlib.Data.Int.Cast.Basic
 
@@ -47,11 +48,15 @@ theorems in `treeWidth` form unless infinite-vertex graphs are genuinely in scop
 
 ## TODO
 
-- In Acyclic.lean, make sure that subtreeOfCut doesn't require a proof of isTree every call.
-- Fix proper adhesion lemma
-- Prove adhesion set is a separator (with new notation)
-
-* Prove `G.IsAcyclic ↔ G.treewidth ≤ 1`.
+- Change ewidth_le and width_le to iff form.
+- Define a treedecomposition for subgraphs, so it is easier to use treeWidth_mono.
+- Prove that G.treeWidth ≥ G.cliqueNumber
+* Prove `G.IsAcyclic ↔ G.treeWidth ≤ 1`. Roadmap:
+  - Add a lemma (or find one) to partition a cycle into two disjoint paths.
+  - Show that for two non adjacent nodes in a cycle, their minimum separator size is ≥ 2.
+  - Prove the ← case.
+  - Add a tool to convert a "forest decomposition" into a tree decomposition.
+  - Construct a tree decomposition for acyclic graphs.
 
 ## Tags
 tree decomposition, treewidth
@@ -444,6 +449,14 @@ theorem treewidth_top [Fintype V] : (⊤ : SimpleGraph V).treeWidth = card V - 1
   have isTrivial : t.IsTrivial := t.isTrivial_iff.mpr forall_edgeCover
   exact (t.isTrivial_width.mp isTrivial).ge
 
+theorem isClique_le_treeWidth [Fintype V] (s : Finset V) :
+    G.IsClique s → s.card - 1 ≤ G.treeWidth := by
+  rw [isClique_iff_induce_eq]
+  intro h
+  calc
+    #s - 1 = (induce (↑s) G).treeWidth := by simp [h, treewidth_top]
+    _ ≤ G.treeWidth := by sorry
+
 end Clique
 
 section Adhesion
@@ -531,6 +544,7 @@ theorem exists_proper_adhesion [Nonempty V] [Finite V] (u v : V) :
 
 /-- If u, v are in the induced separation from an edge, any walk between u, v contains some node in
   the adhesion set. -/
+-- Golf
 lemma mem_adhesion_of_inducedSeparation_walk {u v : V} {x y : t.W} (e : t.T.Adj x y)
     (hu : u ∈ t.inducedSeparation e x) (hv : v ∈ t.inducedSeparation e y) :
     ∀ walk : G.Walk u v, walk.toSubgraph.verts ∩ t.adhesion e ≠ ∅
@@ -567,6 +581,7 @@ lemma mem_adhesion_of_inducedSeparation_walk {u v : V} {x y : t.W} (e : t.T.Adj 
 
 /-- If u and v are on different sides of the induced separation from an edge, then its adhesion
   set separates u and v on the graph. -/
+-- Golf
 theorem adhesion_imp_separator [Nonempty V] [Finite V] {u v : V} {x y : t.W} (e : t.T.Adj x y)
     (hu : u ∈ t.inducedSeparation e x) (hv : v ∈ t.inducedSeparation e y) :
     G.IsSeparator (t.adhesion e) u v := by
@@ -582,5 +597,30 @@ theorem adhesion_imp_separator [Nonempty V] [Finite V] {u v : V} {x y : t.W} (e 
 
 end TreeDecomp
 end Adhesion
+
+section Acyclic
+
+/-- A graph is acyclic iff it has treewidth ≤ 1. -/
+theorem isAcyclic_iff_treewidth_le [Nonempty V] [Finite V] : G.IsAcyclic ↔ G.treeWidth ≤ 1 := by
+  constructor
+  · intro h
+    rw [treeWidth_le_iff_hasTreeDecomp]
+    sorry
+  · rw [IsAcyclic]
+    contrapose!
+    intro h
+    obtain ⟨v, ⟨c, hc⟩⟩ := h
+    by_cases c_len : c.length = 3
+    · have := is3Clique_iff_exists_cycle_length_three.mpr ⟨v, c, ⟨hc, c_len⟩⟩
+      sorry
+    · replace c_len : c.length ≥ 4 := by
+        have : c.length ≥ 3 := hc.three_le_length
+        omega
+      by_contra! htw
+      rw [treeWidth_le_iff_hasTreeDecomp] at htw
+      obtain ⟨t, ht⟩ := htw
+      sorry
+
+end Acyclic
 
 end SimpleGraph
