@@ -156,11 +156,29 @@ lemma Iso.hasTreeDecomp_iff {n : ℕ∞} {V' : Type u}
 lemma TreeDecomp.coe_width {t : TreeDecomp G} (h : t.ewidth ≠ ⊤) :
     (t.width : ℕ∞) = t.ewidth := ENat.coe_toNat h
 
-lemma TreeDecomp.card_bag_le_width (t : G.TreeDecomp) (hw : t.ewidth ≠ ⊤) (w : t.W) :
+lemma TreeDecomp.card_bag_le_width (t : G.TreeDecomp) (hwidth : t.ewidth ≠ ⊤) (w : t.W) :
     #(t.𝓧 w) ≤ t.width + 1 := by
   have := t.card_bag_le w
-  rw [← t.coe_width hw] at this
+  rw [← t.coe_width hwidth] at this
   exact_mod_cast this
+
+-- TODO: golf
+lemma TreeDecomp.width_ge {k : ℕ} (t : TreeDecomp G) (hwidth : t.ewidth ≠ ⊤) :
+    (∃ w : t.W, #(t.𝓧 w) - 1 ≥ k) → t.width ≥ k := by
+  rintro ⟨w, hw⟩
+  suffices t.ewidth ≥ k by
+    rw [← t.coe_width hwidth] at this
+    exact_mod_cast this
+  exact t.ewidth_ge ⟨w, hw⟩
+
+-- golf
+lemma TreeDecomp.width_le {k : ℕ} (t : TreeDecomp G) (hwidth : t.ewidth ≠ ⊤) :
+    (∀ w : t.W, #(t.𝓧 w) - 1 ≤ k) → t.width ≤ k := by
+  intro h
+  suffices t.ewidth ≤ k by
+    rw [← t.coe_width hwidth] at this
+    exact_mod_cast this
+  exact t.ewidth_le h
 
 /-- The tree decomposition obtained by putting all vertices in one bag. -/
 def trivialTreeDecomp [Fintype V] (G : SimpleGraph V) : G.TreeDecomp where
@@ -336,6 +354,10 @@ lemma treeWidth_bot : (⊥ : SimpleGraph V).treeWidth = 0 := by
 end TreeWidth
 
 section Clique
+
+/-- A tree decomposition is trivial if some bag contains every element. -/
+def TreeDecomp.IsTrivial (t : G.TreeDecomp) : Prop := ∃ w : t.W, ∀ v : V, v ∈ t.𝓧 w
+
 private lemma TreeDecomp.exists_bag_univ_of_forall_edgeCover [Nonempty V] [Fintype V]
     (t : G.TreeDecomp)
     (h : ∀ u v : V, ∃ w : t.W, u ∈ t.𝓧 w ∧ v ∈ t.𝓧 w) : ∃ w : t.W, t.𝓧 w = univ := by
@@ -348,6 +370,45 @@ private lemma TreeDecomp.exists_bag_univ_of_forall_edgeCover [Nonempty V] [Finty
     (fun i _ j _ ↦ h i j)
   refine ⟨w, Finset.eq_univ_iff_forall.mpr ?_⟩
   simpa [f] using hw
+
+lemma TreeDecomp.not_isTrivial_iff [Nonempty V] [Finite V] (t : G.TreeDecomp) : ¬t.IsTrivial ↔
+    ∃ u v : V, ∀ w : t.W, u ∉ t.𝓧 w ∨ v ∉ t.𝓧 w := by
+  letI := Fintype.ofFinite V
+  simp only [IsTrivial, not_exists, not_forall]
+  constructor
+  · contrapose!
+    intro h
+    let f (x : V) := {w | x ∈ t.𝓧 w}
+    have h_conn : ∀ i ∈ (univ : Finset V), (t.T.induce (f i)).Connected := fun v _ => by
+      rw [connected_iff]
+      obtain ⟨w, hw⟩ := t.vertexCover v
+      exact ⟨t.connectedBags v, ⟨⟨w, hw⟩⟩⟩
+    obtain ⟨w, hw⟩ := t.isTree.inter_nonempty_of_pairwise Finset.univ_nonempty h_conn
+      (fun i _ j _ ↦ h i j)
+    use w
+    simp only [mem_univ, Set.iInter_true, Set.mem_iInter, Set.mem_setOf_eq, f] at hw
+    exact hw
+  · rintro ⟨u, v, hw⟩ w
+    by_cases hu : u ∈ t.𝓧 w
+    · exact ⟨v, (hw w).resolve_left (by simp [hu])⟩
+    · exact ⟨u, hu⟩
+
+-- Golf
+lemma TreeDecomp.isTrivial_width_iff [Nonempty V] [Fintype V] (t : G.TreeDecomp) :
+    t.IsTrivial ↔ t.width = card V - 1 := by
+  rw [IsTrivial]
+  have hwidth := t.ewidth_ne_top_of_finite
+  constructor
+  · rintro ⟨w, hw⟩
+    refine le_antisymm t.width_le_card ?_
+    rw [← ge_iff_le]
+    apply width_ge
+    · exact hwidth
+    · use w
+      have : t.𝓧 w = univ := eq_univ_iff_forall.mpr hw
+      rw [this, card_univ]
+  · intro h
+    sorry
 
 lemma TreeDecomp.width_lt_iff_exists_not_edgeCover [Nonempty V] [Finite V] (t : G.TreeDecomp) :
     t.ewidth ≠ ⊤ ∧ t.width < Nat.card V - 1 ↔ (∃ u v : V, ∀ w : t.W, u ∉ t.𝓧 w ∨ v ∉ t.𝓧 w) := by
