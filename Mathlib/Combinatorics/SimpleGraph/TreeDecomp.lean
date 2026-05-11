@@ -109,6 +109,7 @@ lemma TreeDecomp.ewidth_ge {k : ℕ} (t : TreeDecomp G) :
     (∃ w : t.W, #(t.𝓧 w) - 1 ≥ k) → t.ewidth ≥ k :=
   fun ⟨w, hw⟩ ↦ le_iSup_of_le w (by exact_mod_cast hw)
 
+-- TODO: change to iff
 lemma TreeDecomp.ewidth_le {k : ℕ} (t : TreeDecomp G) :
     (∀ w : t.W, #(t.𝓧 w) - 1 ≤ k) → t.ewidth ≤ k := by
   intro h
@@ -164,14 +165,21 @@ lemma TreeDecomp.card_bag_le_width (t : G.TreeDecomp) (hwidth : t.ewidth ≠ ⊤
 
 -- TODO: golf
 lemma TreeDecomp.width_ge {k : ℕ} (t : TreeDecomp G) (hwidth : t.ewidth ≠ ⊤) :
-    (∃ w : t.W, #(t.𝓧 w) - 1 ≥ k) → t.width ≥ k := by
-  rintro ⟨w, hw⟩
-  suffices t.ewidth ≥ k by
+    t.width ≥ k ↔ (∃ w : t.W, #(t.𝓧 w) - 1 ≥ k) := by
+  suffices t.ewidth ≥ k ↔ (∃ w : t.W, (#(t.𝓧 w) - 1 : ℕ∞) ≥ k) by
     rw [← t.coe_width hwidth] at this
     exact_mod_cast this
-  exact t.ewidth_ge ⟨w, hw⟩
+  rw [ewidth]
+  constructor
+  · obtain ⟨w, hw⟩ := ENat.exists_eq_iSup_of_lt_top hwidth.lt_top
+    intro h
+    use w
+    rw [hw]
+    exact h
+  · rintro ⟨w, hw⟩
+    exact t.ewidth_ge ⟨w, (by exact_mod_cast hw)⟩
 
--- golf
+-- golf, change to iff
 lemma TreeDecomp.width_le {k : ℕ} (t : TreeDecomp G) (hwidth : t.ewidth ≠ ⊤) :
     (∀ w : t.W, #(t.𝓧 w) - 1 ≤ k) → t.width ≤ k := by
   intro h
@@ -236,7 +244,6 @@ lemma TreeDecomp.ewidth_ne_top_of_finite [Finite V] (t : TreeDecomp G) : t.ewidt
 lemma TreeDecomp.coe_width_of_finite [Finite V] (t : TreeDecomp G) :
     (t.width : ℕ∞) = t.ewidth := t.coe_width t.ewidth_ne_top_of_finite
 
-@[simp]
 lemma TreeDecomp.width_le_iff_ewidth_le [Finite V] (t : TreeDecomp G) {k : ℕ} :
     t.width ≤ k ↔ t.ewidth ≤ k := by
   rw [← t.coe_width_of_finite]; exact_mod_cast Iff.rfl
@@ -358,26 +365,15 @@ section Clique
 /-- A tree decomposition is trivial if some bag contains every element. -/
 def TreeDecomp.IsTrivial (t : G.TreeDecomp) : Prop := ∃ w : t.W, ∀ v : V, v ∈ t.𝓧 w
 
-private lemma TreeDecomp.exists_bag_univ_of_forall_edgeCover [Nonempty V] [Fintype V]
-    (t : G.TreeDecomp)
-    (h : ∀ u v : V, ∃ w : t.W, u ∈ t.𝓧 w ∧ v ∈ t.𝓧 w) : ∃ w : t.W, t.𝓧 w = univ := by
-  let f (x : V) := {w | x ∈ t.𝓧 w}
-  have h_conn : ∀ i ∈ (univ : Finset V), (t.T.induce (f i)).Connected := fun v _ => by
-    rw [connected_iff]
-    obtain ⟨w, hw⟩ := t.vertexCover v
-    exact ⟨t.connectedBags v, ⟨⟨w, hw⟩⟩⟩
-  obtain ⟨w, hw⟩ := t.isTree.inter_nonempty_of_pairwise Finset.univ_nonempty h_conn
-    (fun i _ j _ ↦ h i j)
-  refine ⟨w, Finset.eq_univ_iff_forall.mpr ?_⟩
-  simpa [f] using hw
-
-lemma TreeDecomp.not_isTrivial_iff [Nonempty V] [Finite V] (t : G.TreeDecomp) : ¬t.IsTrivial ↔
-    ∃ u v : V, ∀ w : t.W, u ∉ t.𝓧 w ∨ v ∉ t.𝓧 w := by
+/-- A tree decomposition is trivial iff every pair of vertices is contained in some bag. -/
+lemma TreeDecomp.isTrivial_iff [Nonempty V] [Finite V] (t : G.TreeDecomp) : t.IsTrivial ↔
+    ∀ u v : V, ∃ w : t.W, u ∈ t.𝓧 w ∧ v ∈ t.𝓧 w := by
   letI := Fintype.ofFinite V
-  simp only [IsTrivial, not_exists, not_forall]
+  simp only [IsTrivial]
   constructor
-  · contrapose!
-    intro h
+  · rintro ⟨w, hw⟩
+    exact fun u v ↦ ⟨w, ⟨hw u, hw v⟩⟩
+  · intro h
     let f (x : V) := {w | x ∈ t.𝓧 w}
     have h_conn : ∀ i ∈ (univ : Finset V), (t.T.induce (f i)).Connected := fun v _ => by
       rw [connected_iff]
@@ -388,67 +384,51 @@ lemma TreeDecomp.not_isTrivial_iff [Nonempty V] [Finite V] (t : G.TreeDecomp) : 
     use w
     simp only [mem_univ, Set.iInter_true, Set.mem_iInter, Set.mem_setOf_eq, f] at hw
     exact hw
-  · rintro ⟨u, v, hw⟩ w
-    by_cases hu : u ∈ t.𝓧 w
-    · exact ⟨v, (hw w).resolve_left (by simp [hu])⟩
-    · exact ⟨u, hu⟩
 
 -- Golf
-lemma TreeDecomp.isTrivial_width_iff [Nonempty V] [Fintype V] (t : G.TreeDecomp) :
+lemma TreeDecomp.isTrivial_width [Nonempty V] [Fintype V] (t : G.TreeDecomp) :
     t.IsTrivial ↔ t.width = card V - 1 := by
   rw [IsTrivial]
   have hwidth := t.ewidth_ne_top_of_finite
   constructor
   · rintro ⟨w, hw⟩
     refine le_antisymm t.width_le_card ?_
-    rw [← ge_iff_le]
-    apply width_ge
-    · exact hwidth
-    · use w
-      have : t.𝓧 w = univ := eq_univ_iff_forall.mpr hw
-      rw [this, card_univ]
+    rw [← ge_iff_le, t.width_ge hwidth]
+    use w
+    have : t.𝓧 w = univ := eq_univ_iff_forall.mpr hw
+    rw [this, card_univ]
   · intro h
-    sorry
+    by_cases! hV : card V ≤ 1
+    · expose_names
+      have v := inst.some
+      have ⟨w, hw⟩ := t.vertexCover v
+      use w
+      intro v'
+      rw [← Finset.card_univ, card_le_one_iff] at hV
+      have : v' = v := hV (by simp) (by simp)
+      exact this ▸ hw
+    replace h := h.ge
+    rw [← ge_iff_le, t.width_ge hwidth] at h
+    obtain ⟨w, hw⟩ := h
+    use w
+    rw [← eq_univ_iff_forall, ← card_eq_iff_eq_univ]
+    have : #(t.𝓧 w) ≤ card V := by simp [card_le_univ]
+    omega
 
-lemma TreeDecomp.width_lt_iff_exists_not_edgeCover [Nonempty V] [Finite V] (t : G.TreeDecomp) :
-    t.ewidth ≠ ⊤ ∧ t.width < Nat.card V - 1 ↔ (∃ u v : V, ∀ w : t.W, u ∉ t.𝓧 w ∨ v ∉ t.𝓧 w) := by
-  classical
-  letI := Fintype.ofFinite V
-  constructor
-  · rintro ⟨h_fin, h⟩
-    by_contra h_cover
-    push Not at h_cover
-    have h_cover' : ∀ u v : V, ∃ w : t.W, u ∈ t.𝓧 w ∧ v ∈ t.𝓧 w := fun u v => by
-      obtain ⟨w, hw⟩ := h_cover u v
-      exact ⟨w, by tauto⟩
-    obtain ⟨w, hw⟩ := t.exists_bag_univ_of_forall_edgeCover h_cover'
-    have h_card : #(t.𝓧 w) ≤ t.width + 1 := t.card_bag_le_width_of_finite w
-    rw [hw, Finset.card_univ, ← Nat.card_eq_fintype_card] at h_card
-    omega
-  · rintro ⟨u, v, h⟩
-    obtain ⟨w₀, hw₀⟩ := t.vertexCover u
-    have h_uv : u ≠ v := by
-      rintro rfl
-      rcases h w₀ with h' | h' <;> exact h' hw₀
-    have h_card_V : 2 ≤ Nat.card V := by
-      rw [Nat.card_eq_fintype_card, ← Finset.card_univ]
-      exact Finset.one_lt_card.mpr ⟨u, Finset.mem_univ _, v, Finset.mem_univ _, h_uv⟩
-    have h_bag_card : ∀ w : t.W, #(t.𝓧 w) ≤ Nat.card V - 1 := fun w => by
-      have key : ∀ a, a ∉ t.𝓧 w → #(t.𝓧 w) ≤ Nat.card V - 1 := fun a ha =>
-        calc #(t.𝓧 w)
-          _ ≤ #((Finset.univ : Finset V).erase a) := Finset.card_le_card (fun x hx =>
-              Finset.mem_erase.mpr ⟨fun heq => ha (heq ▸ hx), Finset.mem_univ x⟩)
-          _ = Nat.card V - 1 := by
-            rw [Finset.card_erase_of_mem (Finset.mem_univ a), Finset.card_univ,
-              Nat.card_eq_fintype_card]
-      exact (h w).elim (key u) (key v)
-    have h_ewidth_le : t.ewidth ≤ ((Nat.card V - 2 : ℕ) : ℕ∞) :=
-      t.ewidth_le (fun w => by have := h_bag_card w; omega)
-    have h_fin : t.ewidth ≠ ⊤ := (h_ewidth_le.trans_lt (ENat.coe_lt_top _)).ne
-    refine ⟨h_fin, ?_⟩
-    have h_width_le : t.width ≤ Nat.card V - 2 := by
-      rw [t.width_le_iff_ewidth_le]; exact h_ewidth_le
-    omega
+-- golf
+lemma TreeDecomp.width_lt_iff_not_isTrivial [Nonempty V] [Fintype V] (t : G.TreeDecomp) :
+    t.width < card V - 1 ↔ ¬t.IsTrivial := by
+  rw [← not_iff_not, not_not]
+  push Not
+  have h_le := t.width_le_card
+  suffices t.width = card V - 1 ↔ t.IsTrivial by
+    rw [← this]
+    constructor
+    · intro h_ge
+      exact eq_of_le_of_ge h_le h_ge
+    · intro h_eq
+      simp [h_eq]
+  exact t.isTrivial_width.symm
 
 theorem treewidth_top [Fintype V] : (⊤ : SimpleGraph V).treeWidth = card V - 1 := by
   refine le_antisymm treeWidth_le_card ?_
@@ -461,10 +441,8 @@ theorem treewidth_top [Fintype V] : (⊤ : SimpleGraph V).treeWidth = card V - 1
     by_cases h : u = v
     · subst h; obtain ⟨w, hw⟩ := t.vertexCover u; exact ⟨w, hw, hw⟩
     · exact t.edgeCover ((top_adj u v).mpr h)
-  obtain ⟨w, hw⟩ := t.exists_bag_univ_of_forall_edgeCover forall_edgeCover
-  have h_contra := t.card_bag_le_width_of_finite w
-  rw [hw, Finset.card_univ] at h_contra
-  omega
+  have isTrivial : t.IsTrivial := t.isTrivial_iff.mpr forall_edgeCover
+  exact (t.isTrivial_width.mp isTrivial).ge
 
 end Clique
 
@@ -531,7 +509,6 @@ theorem exists_proper_adhesion [Nonempty V] [Finite V] (u v : V) :
     u ∈ t.inducedSeparation h x ∧ v ∈ t.inducedSeparation h y) := by
     intro h_sep
     push Not at h_sep
-    have h_finite := card_bag_le_width_of_finite t
     obtain ⟨w₀, hw₀⟩ := t.vertexCover u
     obtain ⟨w₁, hw₁⟩ := t.vertexCover v
     obtain ⟨p, hp_path, _⟩ := t.isTree.existsUnique_path w₀ w₁
