@@ -48,7 +48,6 @@ theorems in `treeWidth` form unless infinite-vertex graphs are genuinely in scop
 
 ## TODO
 
-- Change ewidth_le and width_le to iff form.
 - Define a treedecomposition for subgraphs, so it is easier to use treeWidth_mono.
 - Prove that G.treeWidth ≥ G.cliqueNumber
 * Prove `G.IsAcyclic ↔ G.treeWidth ≤ 1`. Roadmap:
@@ -114,12 +113,10 @@ lemma TreeDecomp.ewidth_ge {k : ℕ} (t : TreeDecomp G) :
     (∃ w : t.W, #(t.𝓧 w) - 1 ≥ k) → t.ewidth ≥ k :=
   fun ⟨w, hw⟩ ↦ le_iSup_of_le w (by exact_mod_cast hw)
 
--- TODO: change to iff
 lemma TreeDecomp.ewidth_le {k : ℕ} (t : TreeDecomp G) :
-    (∀ w : t.W, #(t.𝓧 w) - 1 ≤ k) → t.ewidth ≤ k := by
-  intro h
+    t.ewidth ≤ k ↔ ∀ w : t.W, #(t.𝓧 w) - 1 ≤ k := by
   rw [ewidth_eq, iSup_le_iff]
-  exact_mod_cast h
+  exact_mod_cast Iff.rfl
 
 lemma TreeDecomp.card_bag_le (t : G.TreeDecomp) (w : t.W) :
     #(t.𝓧 w) ≤ t.ewidth + 1 := by
@@ -168,30 +165,17 @@ lemma TreeDecomp.card_bag_le_width (t : G.TreeDecomp) (hwidth : t.ewidth ≠ ⊤
   rw [← t.coe_width hwidth] at this
   exact_mod_cast this
 
--- TODO: golf
 lemma TreeDecomp.width_ge {k : ℕ} (t : TreeDecomp G) (hwidth : t.ewidth ≠ ⊤) :
     t.width ≥ k ↔ (∃ w : t.W, #(t.𝓧 w) - 1 ≥ k) := by
   suffices t.ewidth ≥ k ↔ (∃ w : t.W, (#(t.𝓧 w) - 1 : ℕ∞) ≥ k) by
-    rw [← t.coe_width hwidth] at this
-    exact_mod_cast this
-  rw [ewidth]
-  constructor
-  · obtain ⟨w, hw⟩ := ENat.exists_eq_iSup_of_lt_top hwidth.lt_top
-    intro h
-    use w
-    rw [hw]
-    exact h
-  · rintro ⟨w, hw⟩
-    exact t.ewidth_ge ⟨w, (by exact_mod_cast hw)⟩
+    rw [← t.coe_width hwidth] at this; exact_mod_cast this
+  refine ⟨fun h => ?_, fun ⟨w, hw⟩ => t.ewidth_ge ⟨w, by exact_mod_cast hw⟩⟩
+  obtain ⟨w, hw⟩ := ENat.exists_eq_iSup_of_lt_top hwidth.lt_top
+  exact ⟨w, hw.symm ▸ h⟩
 
--- golf, change to iff
 lemma TreeDecomp.width_le {k : ℕ} (t : TreeDecomp G) (hwidth : t.ewidth ≠ ⊤) :
-    (∀ w : t.W, #(t.𝓧 w) - 1 ≤ k) → t.width ≤ k := by
-  intro h
-  suffices t.ewidth ≤ k by
-    rw [← t.coe_width hwidth] at this
-    exact_mod_cast this
-  exact t.ewidth_le h
+    t.width ≤ k ↔ ∀ w : t.W, #(t.𝓧 w) - 1 ≤ k := by
+  rw [← Nat.cast_le (α := ℕ∞), t.coe_width hwidth, t.ewidth_le]
 
 /-- The tree decomposition obtained by putting all vertices in one bag. -/
 def trivialTreeDecomp [Fintype V] (G : SimpleGraph V) : G.TreeDecomp where
@@ -390,50 +374,26 @@ lemma TreeDecomp.isTrivial_iff [Nonempty V] [Finite V] (t : G.TreeDecomp) : t.Is
     simp only [mem_univ, Set.iInter_true, Set.mem_iInter, Set.mem_setOf_eq, f] at hw
     exact hw
 
--- Golf
 lemma TreeDecomp.isTrivial_width [Nonempty V] [Fintype V] (t : G.TreeDecomp) :
     t.IsTrivial ↔ t.width = card V - 1 := by
-  rw [IsTrivial]
   have hwidth := t.ewidth_ne_top_of_finite
-  constructor
-  · rintro ⟨w, hw⟩
-    refine le_antisymm t.width_le_card ?_
-    rw [← ge_iff_le, t.width_ge hwidth]
-    use w
-    have : t.𝓧 w = univ := eq_univ_iff_forall.mpr hw
-    rw [this, card_univ]
-  · intro h
-    by_cases! hV : card V ≤ 1
-    · expose_names
-      have v := inst.some
-      have ⟨w, hw⟩ := t.vertexCover v
-      use w
-      intro v'
+  refine ⟨fun ⟨w, hw⟩ => le_antisymm t.width_le_card ?_, fun h => ?_⟩
+  · rw [← ge_iff_le, t.width_ge hwidth]
+    exact ⟨w, by rw [eq_univ_iff_forall.mpr hw, card_univ]⟩
+  · by_cases hV : card V ≤ 1
+    · obtain ⟨v⟩ := ‹Nonempty V›
+      obtain ⟨w, hw⟩ := t.vertexCover v
       rw [← Finset.card_univ, card_le_one_iff] at hV
-      have : v' = v := hV (by simp) (by simp)
-      exact this ▸ hw
-    replace h := h.ge
-    rw [← ge_iff_le, t.width_ge hwidth] at h
-    obtain ⟨w, hw⟩ := h
-    use w
-    rw [← eq_univ_iff_forall, ← card_eq_iff_eq_univ]
-    have : #(t.𝓧 w) ≤ card V := by simp [card_le_univ]
-    omega
+      refine ⟨w, fun v' => ?_⟩
+      have hvv : v' = v := hV (mem_univ _) (mem_univ _)
+      exact hvv ▸ hw
+    · obtain ⟨w, hw⟩ := (t.width_ge hwidth).mp h.ge
+      have hle : #(t.𝓧 w) ≤ card V := card_le_univ _
+      exact ⟨w, fun v => ((t.𝓧 w).card_eq_iff_eq_univ.mp (by omega)).symm ▸ mem_univ v⟩
 
--- golf
 lemma TreeDecomp.width_lt_iff_not_isTrivial [Nonempty V] [Fintype V] (t : G.TreeDecomp) :
     t.width < card V - 1 ↔ ¬t.IsTrivial := by
-  rw [← not_iff_not, not_not]
-  push Not
-  have h_le := t.width_le_card
-  suffices t.width = card V - 1 ↔ t.IsTrivial by
-    rw [← this]
-    constructor
-    · intro h_ge
-      exact eq_of_le_of_ge h_le h_ge
-    · intro h_eq
-      simp [h_eq]
-  exact t.isTrivial_width.symm
+  rw [t.isTrivial_width, lt_iff_le_and_ne, and_iff_right t.width_le_card]
 
 theorem treewidth_top [Fintype V] : (⊤ : SimpleGraph V).treeWidth = card V - 1 := by
   refine le_antisymm treeWidth_le_card ?_
@@ -544,56 +504,37 @@ theorem exists_proper_adhesion [Nonempty V] [Finite V] (u v : V) :
 
 /-- If u, v are in the induced separation from an edge, any walk between u, v contains some node in
   the adhesion set. -/
--- Golf
 lemma mem_adhesion_of_inducedSeparation_walk {u v : V} {x y : t.W} (e : t.T.Adj x y)
     (hu : u ∈ t.inducedSeparation e x) (hv : v ∈ t.inducedSeparation e y) :
-    ∀ walk : G.Walk u v, walk.toSubgraph.verts ∩ t.adhesion e ≠ ∅
-    := by
-  intro walk
-  by_contra h
-  -- v ∉ inducedSeparation e x by disjointness
+    ∀ walk : G.Walk u v, walk.toSubgraph.verts ∩ t.adhesion e ≠ ∅ := by
+  intro walk h
   have hv_notin : v ∉ t.inducedSeparation e x :=
     Set.disjoint_right.mp (t.disjoint_inducedSeparation e) hv
-  -- Boundary dart d : d.fst ∈ inducedSeparation x, d.snd ∉ inducedSeparation x
   obtain ⟨d, hd_in, hd_fst_in, hd_snd_notin⟩ :=
     walk.exists_boundary_dart (t.inducedSeparation e x) hu hv_notin
-  -- Both endpoints of d lie on the walk
-  have hd_fst_walk : d.fst ∈ walk.toSubgraph.verts :=
+  have nmem : ∀ z, z ∈ walk.toSubgraph.verts → z ∉ ↑(t.adhesion e) :=
+    fun z hz hadh => Set.notMem_empty z (h ▸ ⟨hz, hadh⟩)
+  have h_fst_walk :=
     walk.mem_verts_toSubgraph.mpr (walk.dart_fst_mem_support_of_mem_darts hd_in)
-  have hd_snd_walk : d.snd ∈ walk.toSubgraph.verts :=
+  have h_snd_walk :=
     walk.mem_verts_toSubgraph.mpr (walk.dart_snd_mem_support_of_mem_darts hd_in)
-  -- By `h`, neither endpoint is in adhesion
-  have hd_fst_not_adh : d.fst ∉ ↑(t.adhesion e) := fun h_adh =>
-    Set.notMem_empty d.fst (h ▸ ⟨hd_fst_walk, h_adh⟩)
-  have hd_snd_not_adh : d.snd ∉ ↑(t.adhesion e) := fun h_adh =>
-    Set.notMem_empty d.snd (h ▸ ⟨hd_snd_walk, h_adh⟩)
-  -- Some bag w₀ contains both d.fst and d.snd
-  obtain ⟨w₀, h_d_fst_w₀, h_d_snd_w₀⟩ := t.edgeCover d.adj
-  -- w₀'s component is either the x-side or the y-side
+  obtain ⟨w₀, h_fst_w₀, h_snd_w₀⟩ := t.edgeCover d.adj
   rcases t.T.subtreeOfCut_eq_or_eq t.isTree e w₀ with hw₀_x | hw₀_y
-  · -- x-side: d.snd ∈ ⋃ subtreeOfCut x bags + ∉ adhesion ⇒ d.snd ∈ inducedSep x, contradicting
-    exact hd_snd_notin
-      ⟨Set.mem_iUnion₂.mpr ⟨w₀, hw₀_x, h_d_snd_w₀⟩, hd_snd_not_adh⟩
-  · -- y-side: d.fst ∈ ⋃ subtreeOfCut y bags + ∉ adhesion ⇒ d.fst ∈ inducedSep y,
-    -- contradicting hd_fst_in via disjointness
-    exact Set.disjoint_left.mp (t.disjoint_inducedSeparation e) hd_fst_in
-      ⟨Set.mem_iUnion₂.mpr ⟨w₀, hw₀_y, h_d_fst_w₀⟩, hd_fst_not_adh⟩
+  · exact hd_snd_notin ⟨Set.mem_iUnion₂.mpr ⟨w₀, hw₀_x, h_snd_w₀⟩, nmem _ h_snd_walk⟩
+  · exact Set.disjoint_left.mp (t.disjoint_inducedSeparation e) hd_fst_in
+      ⟨Set.mem_iUnion₂.mpr ⟨w₀, hw₀_y, h_fst_w₀⟩, nmem _ h_fst_walk⟩
 
 /-- If u and v are on different sides of the induced separation from an edge, then its adhesion
   set separates u and v on the graph. -/
--- Golf
 theorem adhesion_imp_separator [Nonempty V] [Finite V] {u v : V} {x y : t.W} (e : t.T.Adj x y)
     (hu : u ∈ t.inducedSeparation e x) (hv : v ∈ t.inducedSeparation e y) :
     G.IsSeparator (t.adhesion e) u v := by
   rw [isSeparator_iff_walk_cover]
-  have mem_adhesion := t.mem_adhesion_of_inducedSeparation_walk e hu hv
+  have mem_adh := t.mem_adhesion_of_inducedSeparation_walk e hu hv
   simp only [mem_inducedSeparation] at hu hv
-  refine ⟨hu.left, ⟨hv.left, ?_⟩⟩
-  intro walk
-  replace mem_adhesion := mem_adhesion walk
-  rw [← Set.nonempty_iff_ne_empty, Set.inter_nonempty] at mem_adhesion
-  obtain ⟨x, ⟨xwalk, xmem⟩⟩ := mem_adhesion
-  exact ⟨x, ⟨xmem, xwalk⟩⟩
+  refine ⟨hu.left, hv.left, fun walk => ?_⟩
+  obtain ⟨z, hzw, hza⟩ := Set.inter_nonempty.mp (Set.nonempty_iff_ne_empty.mpr (mem_adh walk))
+  exact ⟨z, hza, hzw⟩
 
 end TreeDecomp
 end Adhesion
