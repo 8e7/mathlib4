@@ -6,6 +6,7 @@ Authors: Justin Lai
 module
 
 public import Mathlib.Combinatorics.SimpleGraph.Acyclic
+public import Mathlib.Combinatorics.SimpleGraph.Circulant
 public import Mathlib.Combinatorics.SimpleGraph.Clique
 public import Mathlib.Combinatorics.SimpleGraph.Connectivity.Separator
 public import Mathlib.Combinatorics.SimpleGraph.Maps
@@ -416,6 +417,10 @@ lemma TreeDecomp.isTrivial_iff [Nonempty V] [Finite V] (t : G.TreeDecomp) : t.Is
   simp only [mem_univ, Set.iInter_true, Set.mem_iInter, Set.mem_setOf_eq, f] at hw
   exact hw
 
+lemma TreeDecomp.not_isTrivial_iff [Nonempty V] [Finite V] (t : G.TreeDecomp) : ¬t.IsTrivial ↔
+    ∃ u v : V, u ≠ v ∧ ∀ w : t.W, u ∉ t.𝓧 w ∨ v ∉ t.𝓧 w := by
+  simp [isTrivial_iff, imp_iff_not_or]
+
 lemma TreeDecomp.isTrivial_width [Nonempty V] [Fintype V] (t : G.TreeDecomp) :
     t.IsTrivial ↔ t.width = card V - 1 := by
   have hwidth := t.ewidth_ne_top_of_finite
@@ -593,6 +598,30 @@ end Adhesion
 
 section Acyclic
 
+
+
+theorem cycleGraph_le_treewidth (n : ℕ) : 1 < (cycleGraph (n+3)).treeWidth := by
+  set G := cycleGraph (n+3)
+  by_contra! h
+  obtain ⟨t, ht⟩ := (treeWidth_le_iff_hasTreeDecomp _).mp h
+  replace ht : t.width < n+2 := by
+    rw [← t.width_le_iff_ewidth_le] at ht
+    omega
+  have h_nontrivial : ¬t.IsTrivial := t.width_lt_iff_not_isTrivial.mp (by simp [ht])
+  obtain ⟨u, v, huv, h_not_bag⟩ := t.not_isTrivial_iff.mp h_nontrivial
+  have h_not_adj : ¬G.Adj u v := by
+    by_contra hadj
+    obtain ⟨w, hu, hv⟩ := t.edgeCover hadj
+    exact (h_not_bag w).elim (· hu) (· hv)
+  by_cases hsize : n + 3 = 3
+  · have hn : n = 0 := by omega
+    subst hn
+    apply h_not_adj
+    change (cycleGraph 3).Adj u v
+    rw [cycleGraph_three_eq_top]
+    exact (top_adj u v).mpr huv
+  · sorry
+
 /-- A graph is acyclic iff it has treewidth ≤ 1. -/
 theorem isAcyclic_iff_treewidth_le [Nonempty V] [Finite V] : G.IsAcyclic ↔ G.treeWidth ≤ 1 := by
   constructor
@@ -603,16 +632,7 @@ theorem isAcyclic_iff_treewidth_le [Nonempty V] [Finite V] : G.IsAcyclic ↔ G.t
     contrapose!
     intro h
     obtain ⟨v, ⟨c, hc⟩⟩ := h
-    by_cases c_len : c.length = 3
-    · have := is3Clique_iff_exists_cycle_length_three.mpr ⟨v, c, ⟨hc, c_len⟩⟩
-      sorry
-    · replace c_len : c.length ≥ 4 := by
-        have : c.length ≥ 3 := hc.three_le_length
-        omega
-      by_contra! htw
-      rw [treeWidth_le_iff_hasTreeDecomp] at htw
-      obtain ⟨t, ht⟩ := htw
-      sorry
+    sorry
 
 end Acyclic
 
