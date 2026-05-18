@@ -72,7 +72,7 @@ open Finset Fintype
 namespace SimpleGraph
 
 universe u v
-variable {V V' : Type u}
+variable {V : Type u} {V' : Type v}
 variable {G : SimpleGraph V} {G' : SimpleGraph V'}
 
 /-! ## Tree decompositions -/
@@ -84,8 +84,9 @@ section TreeDecomp
 every edge of `G` lies in some bag and the bags containing any fixed vertex form
 a connected subgraph of `T`. -/
 structure TreeDecomp (G : SimpleGraph V) where
-  /-- The type of bags in the tree. -/
-  W : Type u
+  /-- The type of bags in the tree. Fixed at `Type 0` so tree decompositions can
+  be transported across graph isomorphisms regardless of the vertex universe. -/
+  W : Type
   /-- The set of vertices in each bag. -/
   𝓧 : W → Finset V
   /-- The graph adjacency relation of bags. -/
@@ -149,11 +150,11 @@ noncomputable def TreeDecomp.iso (φ : G ≃g G') (t : G.TreeDecomp) : G'.TreeDe
     exact this ▸ t.connectedBags (φ.symm v') }
 
 @[simp]
-lemma TreeDecomp.ewidth_iso (φ : G ≃g G') (t : G.TreeDecomp) : (t.iso φ).ewidth = t.ewidth := by
+lemma TreeDecomp.ewidth_iso (φ : G ≃g G') (t : G.TreeDecomp) :
+    (t.iso φ).ewidth = t.ewidth := by
   simp only [TreeDecomp.ewidth_eq, TreeDecomp.iso, Finset.card_map]
 
-lemma Iso.hasTreeDecomp_iff {n : ℕ∞} {V' : Type u}
-    {G : SimpleGraph V} {G' : SimpleGraph V'} (φ : G ≃g G') :
+lemma Iso.hasTreeDecomp_iff {n : ℕ∞} (φ : G ≃g G') :
     G.hasTreeDecomp n ↔ G'.hasTreeDecomp n :=
   ⟨fun ⟨t, ht⟩ ↦ ⟨t.iso φ, TreeDecomp.ewidth_iso φ t ▸ ht⟩,
    fun ⟨t, ht⟩ ↦ ⟨t.iso φ.symm, TreeDecomp.ewidth_iso φ.symm t ▸ ht⟩⟩
@@ -182,7 +183,8 @@ lemma TreeDecomp.ewidth_comap_le (f : G ↪g G') (t : G'.TreeDecomp) :
   exact Finset.card_le_card_of_injOn f
     (fun v hv => Finset.mem_preimage.mp hv) f.injective.injOn
 
-lemma Embedding.hasTreeDecomp {n : ℕ∞} (f : G ↪g G') : G'.hasTreeDecomp n → G.hasTreeDecomp n :=
+lemma Embedding.hasTreeDecomp {n : ℕ∞} (f : G ↪g G') :
+    G'.hasTreeDecomp n → G.hasTreeDecomp n :=
   fun ⟨t, ht⟩ => ⟨t.comap f, (TreeDecomp.ewidth_comap_le f t).trans ht⟩
 
 @[simp]
@@ -209,7 +211,7 @@ lemma TreeDecomp.width_le {k : ℕ} (t : TreeDecomp G) (hwidth : t.ewidth ≠ �
 
 /-- The tree decomposition obtained by putting all vertices in one bag. -/
 def trivialTreeDecomp [Fintype V] (G : SimpleGraph V) : G.TreeDecomp where
-  W := ULift.{u} Unit
+  W := Unit
   𝓧 := fun _ ↦ univ
   T := ⊥
   isTree := by exact IsTree.of_subsingleton
@@ -222,8 +224,9 @@ lemma ewidth_trivialTreeDecomp [Fintype V] :
   simp [TreeDecomp.ewidth_eq, trivialTreeDecomp]
 
 /-- The tree decomposition of `⊥` indexed by `Option V` with a star graph rooted at `none`:
-bags are `∅` at `none` and `{v}` at `some v`. -/
-noncomputable def botTreeDecomp : (⊥ : SimpleGraph V).TreeDecomp where
+bags are `∅` at `none` and `{v}` at `some v`. Restricted to `V : Type` so that the bag-indexing
+type fits in `Type 0` (the fixed universe of `TreeDecomp.W`). -/
+noncomputable def botTreeDecomp {V : Type} : (⊥ : SimpleGraph V).TreeDecomp where
   W := Option V
   𝓧 w := w.elim ∅ ({·})
   T := starGraph none
@@ -236,7 +239,7 @@ noncomputable def botTreeDecomp : (⊥ : SimpleGraph V).TreeDecomp where
       cases w <;> simp [eq_comm]
     exact this ▸ Preconnected.of_subsingleton
 
-lemma ewidth_botTreeDecomp : (botTreeDecomp (V := V)).ewidth = 0 := by
+lemma ewidth_botTreeDecomp {V : Type} : (botTreeDecomp (V := V)).ewidth = 0 := by
   refine iSup_eq_bot.mpr ?_
   rintro (_ | w) <;> simp [botTreeDecomp]
 
@@ -324,8 +327,7 @@ lemma etreeWidth_mono {G' : SimpleGraph V} (h : G' ≤ G) : G'.etreeWidth ≤ G.
     rw [etreeWidth_le_iff_hasTreeDecomp]
     exact TreeDecomp.mono h ((etreeWidth_le_iff_hasTreeDecomp a).mp hw.le)
 
-lemma etreeWidth_mono_of_embedding {V' : Type u} {G' : SimpleGraph V'} (f : G ↪g G') :
-    G.etreeWidth ≤ G'.etreeWidth := by
+lemma etreeWidth_mono_of_embedding (f : G ↪g G') : G.etreeWidth ≤ G'.etreeWidth := by
   cases hw : G'.etreeWidth
   · simp
   · expose_names
@@ -365,12 +367,31 @@ theorem treeWidth_le_card [Fintype V] : G.treeWidth ≤ card V - 1 :=
 lemma treeWidth_mono {G' : SimpleGraph V} [Finite V] (h : G' ≤ G) : G'.treeWidth ≤ G.treeWidth := by
   simpa using etreeWidth_mono h
 
-lemma treeWidth_mono_of_embedding {V' : Type u} {G' : SimpleGraph V'} [Finite V] [Finite V']
+lemma treeWidth_mono_of_embedding [Finite V] [Finite V']
     (f : G ↪g G') : G.treeWidth ≤ G'.treeWidth := by
   simpa using etreeWidth_mono_of_embedding f
 
-/-- The treewidth of a graph is nonzero iff it has an edge. -/
-theorem etreeWidth_ne_zero_iff_ne_bot : 0 < G.etreeWidth ↔ G ≠ ⊥ := by
+/-- Tree-width is monotone under graph containment: if `B` contains a copy of `A`, then `A`'s
+extended tree-width is at most `B`'s. -/
+theorem IsContained.etreeWidth_le {A : SimpleGraph V} {B : SimpleGraph V'} (h : A ⊑ B) :
+    A.etreeWidth ≤ B.etreeWidth := by
+  obtain ⟨f⟩ := h
+  calc A.etreeWidth
+      ≤ f.toSubgraph.coe.etreeWidth :=
+        etreeWidth_mono_of_embedding f.isoToSubgraph.toEmbedding
+    _ ≤ f.toSubgraph.spanningCoe.etreeWidth :=
+        etreeWidth_mono_of_embedding f.toSubgraph.coeEmbeddingSpanningCoe
+    _ ≤ B.etreeWidth := etreeWidth_mono f.toSubgraph.spanningCoe_le
+
+/-- ℕ-valued version of `IsContained.etreeWidth_le`. -/
+theorem IsContained.treeWidth_le {A : SimpleGraph V} {B : SimpleGraph V'}
+    [Finite V] [Finite V'] (h : A ⊑ B) : A.treeWidth ≤ B.treeWidth := by
+  simpa using h.etreeWidth_le
+
+/-- The treewidth of a graph is nonzero iff it has an edge.
+Restricted to `V : Type 0` because the `⊥` direction relies on `botTreeDecomp`. -/
+theorem etreeWidth_ne_zero_iff_ne_bot {V : Type} {G : SimpleGraph V} :
+    0 < G.etreeWidth ↔ G ≠ ⊥ := by
   classical
   rw [← Order.one_le_iff_pos, ← ge_iff_le, etreeWidth_ge_iff]
   refine ⟨?_, ?_⟩
@@ -383,10 +404,10 @@ theorem etreeWidth_ne_zero_iff_ne_bot : 0 < G.etreeWidth ↔ G ≠ ⊥ := by
     have := Finset.one_lt_card.mpr ⟨u, hu, v, hv, huv.ne⟩
     exact_mod_cast t.ewidth_ge ⟨w, by omega⟩
 
-lemma treeWidth_bot : (⊥ : SimpleGraph V).treeWidth = 0 := by
+lemma treeWidth_bot {V : Type} : (⊥ : SimpleGraph V).treeWidth = 0 := by
   have : (⊥ : SimpleGraph V).etreeWidth = 0 :=
     le_antisymm ((treeDecomp_imp_etreeWidth_le botTreeDecomp).trans ewidth_botTreeDecomp.le)
-      (zero_le _)
+      zero_le
   simp [treeWidth, this]
 
 end TreeWidth
@@ -598,18 +619,14 @@ end Adhesion
 
 section Acyclic
 
-
-
+/-- A cycle graph with ≥ 3 vertices has treewidth > 1. -/
 theorem cycleGraph_le_treewidth (n : ℕ) : 1 < (cycleGraph (n+3)).treeWidth := by
-  set G := cycleGraph (n+3)
   by_contra! h
   obtain ⟨t, ht⟩ := (treeWidth_le_iff_hasTreeDecomp _).mp h
-  replace ht : t.width < n+2 := by
-    rw [← t.width_le_iff_ewidth_le] at ht
-    omega
-  have h_nontrivial : ¬t.IsTrivial := t.width_lt_iff_not_isTrivial.mp (by simp [ht])
+  rw [← t.width_le_iff_ewidth_le] at ht
+  have h_nontrivial : ¬t.IsTrivial := t.width_lt_iff_not_isTrivial.mp (by simp; omega)
   obtain ⟨u, v, huv, h_not_bag⟩ := t.not_isTrivial_iff.mp h_nontrivial
-  have h_not_adj : ¬G.Adj u v := by
+  have h_not_adj : ¬(cycleGraph (n+3)).Adj u v := by
     by_contra hadj
     obtain ⟨w, hu, hv⟩ := t.edgeCover hadj
     exact (h_not_bag w).elim (· hu) (· hv)
@@ -617,10 +634,16 @@ theorem cycleGraph_le_treewidth (n : ℕ) : 1 < (cycleGraph (n+3)).treeWidth := 
   · have hn : n = 0 := by omega
     subst hn
     apply h_not_adj
-    change (cycleGraph 3).Adj u v
     rw [cycleGraph_three_eq_top]
     exact (top_adj u v).mpr huv
-  · sorry
+  · have disjoint_paths := cycleGraph.disjoint_ccwPath_cwPath u v huv
+    have sep_card := two_le_card_separator_of_disjoint_walks disjoint_paths
+    have ⟨x, y, adh, adh_card, u_adh, v_adh⟩ := t.exists_proper_adhesion u v
+      (fun ⟨w, hu, hv⟩ => (h_not_bag w).elim (· hu) (· hv))
+    have adh_separator := t.adhesion_imp_separator adh u_adh v_adh
+    have adh_card_ge := sep_card _ adh_separator
+    grw [ht] at adh_card
+    lia
 
 /-- A graph is acyclic iff it has treewidth ≤ 1. -/
 theorem isAcyclic_iff_treewidth_le [Nonempty V] [Finite V] : G.IsAcyclic ↔ G.treeWidth ≤ 1 := by
@@ -632,7 +655,12 @@ theorem isAcyclic_iff_treewidth_le [Nonempty V] [Finite V] : G.IsAcyclic ↔ G.t
     contrapose!
     intro h
     obtain ⟨v, ⟨c, hc⟩⟩ := h
-    sorry
+    have len := hc.three_le_length
+    obtain ⟨n, hn⟩ : ∃ n, c.length = n + 3 := ⟨c.length - 3, by omega⟩
+    have contained := (cycleGraph_isContained_iff len).mpr
+      ⟨v, c, ⟨hc, (by rfl)⟩⟩
+    calc 1 < (cycleGraph (n+3)).treeWidth := cycleGraph_le_treewidth n
+      _ ≤ G.treeWidth := hn ▸ contained.treeWidth_le
 
 end Acyclic
 

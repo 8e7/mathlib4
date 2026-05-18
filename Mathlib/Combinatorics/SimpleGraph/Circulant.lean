@@ -229,40 +229,6 @@ private theorem cycleGraph.mem_support_cycleCons :
         · left; exact Fin.ext heq
         · right; exact Nat.lt_succ_iff.mp hlt
 
-set_option backward.privateInPublic true in
-private theorem cycleGraph.cycleCons_isPath :
-    ∀ m : Fin (n + 3), (cycleGraph.cycleCons n m).IsPath
-  | ⟨0, _⟩ => by unfold cycleGraph.cycleCons; exact Walk.IsPath.nil
-  | ⟨m + 1, h⟩ => by
-      rw [cycleGraph.cycleCons]
-      refine (cycleGraph.cycleCons_isPath ⟨m, by omega⟩).cons ?_
-      intro hmem
-      have := (cycleGraph.mem_support_cycleCons ⟨m, by omega⟩ ⟨m + 1, h⟩).mp hmem
-      simp at this
-
-set_option backward.privateInPublic true in
-private theorem cycleGraph.dart_val_cycleCons :
-    ∀ (m : Fin (n + 3)) (d : (cycleGraph (n + 3)).Dart),
-      d ∈ (cycleGraph.cycleCons n m).darts → d.fst.val = d.snd.val + 1
-  | ⟨0, _⟩, _, hd => by unfold cycleGraph.cycleCons at hd; simp at hd
-  | ⟨m + 1, h⟩, d, hd => by
-      rw [cycleGraph.cycleCons, Walk.darts_cons, List.mem_cons] at hd
-      rcases hd with rfl | hd'
-      · rfl
-      · exact cycleGraph.dart_val_cycleCons ⟨m, by omega⟩ d hd'
-
-/-- The Eulerian cycle `cycleGraph.cycle` is a graph-theoretic cycle. -/
-theorem cycleGraph.cycle_isCycle : (cycleGraph.cycle n).IsCycle := by
-  rw [cycleGraph.cycle, Walk.cons_isCycle_iff]
-  refine ⟨cycleGraph.cycleCons_isPath _, ?_⟩
-  intro he
-  simp only [Walk.edges, List.mem_map] at he
-  obtain ⟨d, hd, hedge⟩ := he
-  have h_val := cycleGraph.dart_val_cycleCons _ d hd
-  rw [Dart.edge, Sym2.eq_iff] at hedge
-  rcases hedge with ⟨h1, h2⟩ | ⟨h1, h2⟩ <;>
-    · rw [h1, h2] at h_val; simp [Fin.val_last] at h_val
-
 /-- Every vertex of `cycleGraph (n + 3)` appears in the support of `cycleGraph.cycle`. -/
 theorem cycleGraph.mem_support_cycle (v : Fin (n + 3)) :
     v ∈ (cycleGraph.cycle n).support := by
@@ -277,7 +243,7 @@ def cycleGraph.cycleAt (u : Fin (n + 3)) : (cycleGraph (n + 3)).Walk u u :=
 
 theorem cycleGraph.cycleAt_isCycle (u : Fin (n + 3)) :
     (cycleGraph.cycleAt u).IsCycle :=
-  (Walk.isCycle_rotate _).mpr cycleGraph.cycle_isCycle
+  (Walk.isCycle_rotate _).mpr cycleGraph.isCycle_cycle
 
 /-- Every vertex of `cycleGraph (n + 3)` appears in the support of `cycleAt u`. -/
 theorem cycleGraph.mem_support_cycleAt (u v : Fin (n + 3)) :
@@ -325,5 +291,41 @@ theorem cycleGraph.disjoint_ccwPath_cwPath (u v : Fin (n + 3)) (huv : u ≠ v) :
   exact (cycleGraph.cycleAt_split_isCycle u v).disjoint_tail_support_of_append h_x_t h_x_d
 
 end CyclePaths
+
+section IsContained
+
+variable {V : Type*} {G : SimpleGraph V}
+
+lemma cycleGraph_isContained_iff {n : ℕ} (hn : 2 < n) :
+    cycleGraph n ⊑ G ↔ ∃ (v : V) (p : G.Walk v v), p.IsCycle ∧ p.length = n := by
+  refine ⟨fun ⟨h⟩ ↦ ?_, fun h' ↦ ?_⟩
+  · have : n = n - 3 + 3 := by lia
+    rw [this] at h
+    refine ⟨h.toHom ⟨0, by lia⟩, Walk.map h.toHom <| cycleGraph.cycle (n - 3), ?_, ?_⟩
+    · exact (map_isCycle_iff_of_injective h.injective).mpr cycleGraph.isCycle_cycle
+    · simp [cycleGraph.length_cycle, ← this]
+  · obtain ⟨a, p, hp₁, hp₂⟩ := h'
+    refine ⟨⟨⟨fun n ↦ p.support[n.succ]'(?_), ?_⟩, ?_⟩⟩
+    · grind [hp₁.three_le_length, length_tail_add_one, not_nil_iff_lt_length]
+    · intro ⟨x, hx⟩ ⟨y, hy⟩ hab
+      have hne : x ≠ y := fun _ ↦ by simp_all
+      wlog hle : x > y
+      · exact this hn a p hp₁ hp₂ y hy x hx hab.symm hne.symm (by lia) |>.symm
+      rcases cycleGraph_adj'.mp hab with hab | hab
+      · simp_rw [show x = y + 1 by grind [Fin.sub_val_of_le]]
+        exact p.isChain_adj_support.getElem _ _ |>.symm
+      · rw [Fin.coe_sub_iff_lt.mpr hle] at hab
+        simp_rw [show x = n - 1 by lia, show y = 0 by lia, Fin.succ_mk, show n - 1 + 1 = n by lia]
+        simp [← hp₂, p.adj_snd hp₁.not_nil]
+    · have hlen : p.tail.support.length = n := by
+        grind [length_tail_add_one, not_nil_iff_lt_length]
+      have (m : Fin n) : p.support[m.succ]'(by grind) = p.tail.support[m] := by
+        simp [p.support_tail_of_not_nil hp₁.not_nil]
+      simp_rw [this]
+      have := IsPath.mk' <| (support_tail_of_not_nil _ hp₁.not_nil) ▸ hp₁.support_nodup
+      exact hlen ▸ (isPath_iff_injective_get_support _ |>.mp this)
+
+end IsContained
+
 
 end SimpleGraph
