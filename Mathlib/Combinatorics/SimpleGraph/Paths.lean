@@ -335,6 +335,14 @@ lemma IsCycle.isPath_of_append_left {p : G.Walk u v} {q : G.Walk v u} (h : ¬ q.
     (hcyc : (p.append q).IsCycle) : p.IsPath :=
   p.isPath_reverse_iff.mp ((reverse_append _ _ ▸ hcyc.reverse).isPath_of_append_right (by simpa))
 
+/-- A cycle decomposed as `p.append q` has internally disjoint halves:
+the open supports `p.support.tail` and `q.support.tail` share no vertices. -/
+lemma IsCycle.disjoint_tail_support_of_append {p : G.Walk u v} {q : G.Walk v u}
+    (hcyc : (p.append q).IsCycle) : p.support.tail.Disjoint q.support.tail := by
+  have hnodup : (p.append q).support.tail.Nodup := hcyc.support_nodup
+  rw [tail_support_append] at hnodup
+  exact hnodup.disjoint
+
 theorem IsCycle.isPath_tail {p : G.Walk u u} (h : p.IsCycle) : p.tail.IsPath :=
   IsPath.mk' <| p.support_tail_of_not_nil h.not_nil ▸ h.support_nodup
 

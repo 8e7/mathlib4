@@ -177,4 +177,122 @@ theorem cycleGraph.length_cycle {n : ℕ} : (cycleGraph.cycle n).length = n + 3 
 @[deprecated (since := "2026-02-15")]
 alias cycleGraph_EulerianCircuit_length := cycleGraph.length_cycle
 
+/-! ### Canonical paths on the cycle graph -/
+
+section CyclePaths
+
+variable {n : ℕ}
+
+set_option backward.privateInPublic true in
+private theorem cycleGraph.mem_support_cycleCons :
+    ∀ (m k : Fin (n + 3)), k ∈ (cycleGraph.cycleCons n m).support ↔ k.val ≤ m.val
+  | ⟨0, _⟩, _ => by unfold cycleGraph.cycleCons; simp
+  | ⟨m + 1, h⟩, k => by
+      rw [cycleGraph.cycleCons, Walk.support_cons, List.mem_cons,
+        cycleGraph.mem_support_cycleCons ⟨m, by omega⟩ k]
+      refine ⟨fun hh => ?_, fun hh => ?_⟩
+      · rcases hh with rfl | hle
+        · exact le_refl _
+        · exact Nat.le_succ_of_le hle
+      · rcases eq_or_lt_of_le hh with heq | hlt
+        · left; exact Fin.ext heq
+        · right; exact Nat.lt_succ_iff.mp hlt
+
+set_option backward.privateInPublic true in
+private theorem cycleGraph.cycleCons_isPath :
+    ∀ m : Fin (n + 3), (cycleGraph.cycleCons n m).IsPath
+  | ⟨0, _⟩ => by unfold cycleGraph.cycleCons; exact Walk.IsPath.nil
+  | ⟨m + 1, h⟩ => by
+      rw [cycleGraph.cycleCons]
+      refine (cycleGraph.cycleCons_isPath ⟨m, by omega⟩).cons ?_
+      intro hmem
+      have := (cycleGraph.mem_support_cycleCons ⟨m, by omega⟩ ⟨m + 1, h⟩).mp hmem
+      simp at this
+
+set_option backward.privateInPublic true in
+private theorem cycleGraph.dart_val_cycleCons :
+    ∀ (m : Fin (n + 3)) (d : (cycleGraph (n + 3)).Dart),
+      d ∈ (cycleGraph.cycleCons n m).darts → d.fst.val = d.snd.val + 1
+  | ⟨0, _⟩, _, hd => by unfold cycleGraph.cycleCons at hd; simp at hd
+  | ⟨m + 1, h⟩, d, hd => by
+      rw [cycleGraph.cycleCons, Walk.darts_cons, List.mem_cons] at hd
+      rcases hd with rfl | hd'
+      · rfl
+      · exact cycleGraph.dart_val_cycleCons ⟨m, by omega⟩ d hd'
+
+/-- The Eulerian cycle `cycleGraph.cycle` is a graph-theoretic cycle. -/
+theorem cycleGraph.cycle_isCycle : (cycleGraph.cycle n).IsCycle := by
+  rw [cycleGraph.cycle, Walk.cons_isCycle_iff]
+  refine ⟨cycleGraph.cycleCons_isPath _, ?_⟩
+  intro he
+  simp only [Walk.edges, List.mem_map] at he
+  obtain ⟨d, hd, hedge⟩ := he
+  have h_val := cycleGraph.dart_val_cycleCons _ d hd
+  rw [Dart.edge, Sym2.eq_iff] at hedge
+  rcases hedge with ⟨h1, h2⟩ | ⟨h1, h2⟩ <;>
+    · rw [h1, h2] at h_val; simp [Fin.val_last] at h_val
+
+/-- Every vertex of `cycleGraph (n + 3)` appears in the support of `cycleGraph.cycle`. -/
+theorem cycleGraph.mem_support_cycle (v : Fin (n + 3)) :
+    v ∈ (cycleGraph.cycle n).support := by
+  rw [cycleGraph.cycle, Walk.support_cons]
+  exact List.mem_cons_of_mem _
+    ((cycleGraph.mem_support_cycleCons (Fin.last (n + 2)) v).mpr (Fin.is_le _))
+
+/-- The traversal of `cycleGraph (n + 3)` starting (and ending) at `u`, obtained by
+rotating `cycleGraph.cycle` to begin at `u`. -/
+def cycleGraph.cycleAt (u : Fin (n + 3)) : (cycleGraph (n + 3)).Walk u u :=
+  (cycleGraph.cycle n).rotate u (cycleGraph.mem_support_cycle u)
+
+theorem cycleGraph.cycleAt_isCycle (u : Fin (n + 3)) :
+    (cycleGraph.cycleAt u).IsCycle :=
+  (Walk.isCycle_rotate _).mpr cycleGraph.cycle_isCycle
+
+/-- Every vertex of `cycleGraph (n + 3)` appears in the support of `cycleAt u`. -/
+theorem cycleGraph.mem_support_cycleAt (u v : Fin (n + 3)) :
+    v ∈ (cycleGraph.cycleAt u).support := by
+  rw [cycleGraph.cycleAt, Walk.mem_support_rotate_iff]
+  exact cycleGraph.mem_support_cycle v
+
+lemma cycleGraph.cycleAt_split_isCycle (u v : Fin (n + 3)) :
+    (((cycleGraph.cycleAt u).takeUntil v (cycleGraph.mem_support_cycleAt u v)).append
+      ((cycleGraph.cycleAt u).dropUntil v (cycleGraph.mem_support_cycleAt u v))).IsCycle := by
+  rw [Walk.take_spec]; exact cycleGraph.cycleAt_isCycle u
+
+/-- One of the two canonical paths from `u` to `v` on `cycleGraph (n + 3)`:
+the prefix of `cycleAt u` up to the first visit to `v`. -/
+def cycleGraph.ccwPath (u v : Fin (n + 3)) (huv : u ≠ v) : (cycleGraph (n + 3)).Path u v :=
+  ⟨(cycleGraph.cycleAt u).takeUntil v (cycleGraph.mem_support_cycleAt u v),
+   (cycleGraph.cycleAt_split_isCycle u v).isPath_of_append_left
+     (Walk.not_nil_of_ne huv.symm)⟩
+
+/-- The other canonical path from `u` to `v` on `cycleGraph (n + 3)`:
+the suffix of `cycleAt u` from the first visit to `v`, reversed. -/
+def cycleGraph.cwPath (u v : Fin (n + 3)) (huv : u ≠ v) : (cycleGraph (n + 3)).Path u v :=
+  ⟨((cycleGraph.cycleAt u).dropUntil v (cycleGraph.mem_support_cycleAt u v)).reverse,
+   (Walk.isPath_reverse_iff _).mpr <|
+     (cycleGraph.cycleAt_split_isCycle u v).isPath_of_append_right
+       (Walk.not_nil_of_ne huv)⟩
+
+/-- The two canonical paths between `u` and `v` are internally vertex-disjoint:
+they share only the endpoints. -/
+theorem cycleGraph.disjoint_ccwPath_cwPath (u v : Fin (n + 3)) (huv : u ≠ v) :
+    ∀ x ∈ (cycleGraph.ccwPath u v huv).val.toSubgraph.verts,
+      x ∈ (cycleGraph.cwPath u v huv).val.toSubgraph.verts → x = u ∨ x = v := by
+  intro x hx_take hx_drop
+  rw [Walk.mem_verts_toSubgraph, cycleGraph.ccwPath] at hx_take
+  rw [Walk.mem_verts_toSubgraph, cycleGraph.cwPath, Walk.support_reverse,
+    List.mem_reverse] at hx_drop
+  by_contra! h_or
+  obtain ⟨hxu, hxv⟩ := h_or
+  set c := cycleGraph.cycleAt u
+  have hmem_v : v ∈ c.support := cycleGraph.mem_support_cycleAt u v
+  set t := c.takeUntil v hmem_v
+  set d := c.dropUntil v hmem_v
+  have h_x_t : x ∈ t.support.tail := ((Walk.mem_support_iff t).mp hx_take).resolve_left hxu
+  have h_x_d : x ∈ d.support.tail := ((Walk.mem_support_iff d).mp hx_drop).resolve_left hxv
+  exact (cycleGraph.cycleAt_split_isCycle u v).disjoint_tail_support_of_append h_x_t h_x_d
+
+end CyclePaths
+
 end SimpleGraph
