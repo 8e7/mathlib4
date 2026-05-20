@@ -619,48 +619,155 @@ end Adhesion
 
 section Acyclic
 
+/-- Every acyclic graph on a nonempty vertex type is contained in a tree, obtained as a
+maximal acyclic extension. -/
+theorem IsAcyclic.exists_isTree_ge [Nonempty V] (hG : G.IsAcyclic) :
+    ∃ T : SimpleGraph V, G ≤ T ∧ T.IsTree := by
+  obtain ⟨T, hGT, hT⟩ :=
+    (⊤ : SimpleGraph V).exists_maximal_isAcyclic_of_le_isAcyclic le_top hG
+  exact ⟨T, hGT, (connected_top.maximal_le_isAcyclic_iff_isTree le_top).mp hT⟩
+
 /-- A cycle graph with ≥ 3 vertices has treewidth > 1. -/
 theorem cycleGraph_le_treewidth (n : ℕ) : 1 < (cycleGraph (n+3)).treeWidth := by
   by_contra! h
   obtain ⟨t, ht⟩ := (treeWidth_le_iff_hasTreeDecomp _).mp h
   rw [← t.width_le_iff_ewidth_le] at ht
-  have h_nontrivial : ¬t.IsTrivial := t.width_lt_iff_not_isTrivial.mp (by simp; omega)
-  obtain ⟨u, v, huv, h_not_bag⟩ := t.not_isTrivial_iff.mp h_nontrivial
-  have h_not_adj : ¬(cycleGraph (n+3)).Adj u v := by
-    by_contra hadj
-    obtain ⟨w, hu, hv⟩ := t.edgeCover hadj
-    exact (h_not_bag w).elim (· hu) (· hv)
+  obtain ⟨u, v, huv, h_not_bag⟩ := t.not_isTrivial_iff.mp
+    (t.width_lt_iff_not_isTrivial.mp (by simp; omega))
+  have h_no_share : ¬∃ w, u ∈ t.𝓧 w ∧ v ∈ t.𝓧 w :=
+    fun ⟨w, hu, hv⟩ => (h_not_bag w).elim (· hu) (· hv)
   by_cases hsize : n + 3 = 3
-  · have hn : n = 0 := by omega
-    subst hn
-    apply h_not_adj
-    rw [cycleGraph_three_eq_top]
-    exact (top_adj u v).mpr huv
-  · have disjoint_paths := cycleGraph.disjoint_ccwPath_cwPath u v huv
-    have sep_card := two_le_card_separator_of_disjoint_walks disjoint_paths
-    have ⟨x, y, adh, adh_card, u_adh, v_adh⟩ := t.exists_proper_adhesion u v
-      (fun ⟨w, hu, hv⟩ => (h_not_bag w).elim (· hu) (· hv))
-    have adh_separator := t.adhesion_imp_separator adh u_adh v_adh
-    have adh_card_ge := sep_card _ adh_separator
+  · obtain rfl : n = 0 := by omega
+    exact h_no_share (t.edgeCover (cycleGraph_three_eq_top.symm ▸ (top_adj u v).mpr huv))
+  · have sep_card := two_le_card_separator_of_disjoint_walks
+      (cycleGraph.disjoint_ccwPath_cwPath u v huv)
+    obtain ⟨x, y, adh, adh_card, u_adh, v_adh⟩ := t.exists_proper_adhesion u v h_no_share
+    have := sep_card _ (t.adhesion_imp_separator adh u_adh v_adh)
     grw [ht] at adh_card
     lia
 
+/-- Every tree has treewidth at most 1. Transports to `Fin (Fintype.card V)` via
+[[SimpleGraph.overFinIso]] so the bag-indexing type fits the `Type 0` slot of `TreeDecomp.W`,
+then builds the incidence-graph (Levi-graph) tree decomposition: vertex-nodes carry singleton
+bags, edge-nodes carry their two endpoints, and `T` is the bipartite incidence graph. -/
+theorem isTree_treewidth [Nonempty V] [Finite V] (ht : G.IsTree) : G.treeWidth ≤ 1 := by
+  classical
+  haveI : Fintype V := Fintype.ofFinite V
+  let iso : G ≃g G.overFin rfl := G.overFinIso rfl
+  -- Chosen root vertex in the `Fin n` encoding; used to anchor the connectedness argument.
+  let r : Fin (Fintype.card V) := iso (Classical.arbitrary V)
+  rw [treeWidth_le_iff_hasTreeDecomp, iso.hasTreeDecomp_iff]
+  set G' := G.overFin rfl
+  have ht' : G'.IsTree := iso.isTree_iff.mp ht
+  set T : SimpleGraph (Fin (Fintype.card V) ⊕ G'.edgeSet) :=
+    SimpleGraph.fromRel fun a b => match a, b with
+      | .inl v, .inr e => v ∈ e.val
+      | _, _ => False
+  -- `v ∈ e.val` is exactly the bipartite incidence relation underlying `T`.
+  have hT_mk : ∀ {v : Fin (Fintype.card V)} {e : G'.edgeSet},
+      v ∈ e.val → T.Adj (.inl v) (.inr e) := fun hv =>
+    (fromRel_adj _ _ _).mpr ⟨Sum.inl_ne_inr, .inl hv⟩
+  refine ⟨{
+    W := Fin (Fintype.card V) ⊕ G'.edgeSet
+    𝓧 := Sum.elim (fun v => {v}) (fun e => e.val.toFinset)
+    T := T
+    isTree := ?_
+    vertexCover := ?_
+    edgeCover := ?_
+    connectedBags := ?_ }, ?_⟩
+  · -- T (Levi graph of a tree) is itself a tree.
+    -- Lift each G'-walk to a T-walk through the corresponding edge-nodes.
+    refine isTree_iff_connected_and_card.mpr ⟨?_, ?_⟩
+    · -- Connected: `Nonempty W` via the root `r`; `Preconnected` by routing every vertex
+      -- to `.inl r` using `liftWalk` (plus one bridge edge for edge-nodes).
+      have liftAdj : ∀ {u v : Fin (Fintype.card V)} (h : G'.Adj u v),
+          T.Adj (.inl u) (.inr ⟨s(u, v), h⟩) ∧ T.Adj (.inr ⟨s(u, v), h⟩) (.inl v) := fun _ =>
+        ⟨hT_mk (by simp), (hT_mk (by simp)).symm⟩
+      have liftWalk : ∀ {u v : Fin (Fintype.card V)}, G'.Walk u v →
+          T.Walk (.inl u) (.inl v) := by
+        intro u v p
+        induction p with
+        | nil => exact .nil
+        | @cons u w v h q ih => exact .cons (liftAdj h).1 (.cons (liftAdj h).2 ih)
+      haveI : Nonempty (Fin (Fintype.card V) ⊕ G'.edgeSet) := ⟨.inl r⟩
+      refine ⟨fun a b => ?_⟩
+      suffices h : ∀ w, T.Reachable w (.inl r) from (h a).trans (h b).symm
+      rintro (x | ⟨e, he⟩)
+      · exact ⟨liftWalk (ht'.connected.preconnected x r).some⟩
+      · exact ⟨.cons (hT_mk (Sym2.out_fst_mem e)).symm
+          (liftWalk (ht'.connected.preconnected e.out.1 r).some)⟩
+    · -- Cardinality: `|T.edgeSet| + 1 = |W|`.
+      -- `|W| = n + |G'.edgeSet|`, and each G'-edge yields 2 incident T-edges (one per
+      -- endpoint), so `|T.edgeSet| = 2|G'.edgeSet|`. Using `G'` tree (`|G'.edgeSet| = n - 1`):
+      -- `|T.edgeSet| + 1 = 2(n-1) + 1 = 2n - 1 = n + (n-1) = |W|`.
+      have hG'card : Nat.card G'.edgeSet + 1 = Fintype.card V := by
+        simpa [Nat.card_eq_fintype_card] using (isTree_iff_connected_and_card.mp ht').2
+      -- Bijection `T.edgeSet ≃ Σ e : G'.edgeSet, ↥e.val.toFinset` — index by edge then
+      -- pick one of its two endpoints (as elements of `e.val.toFinset`).
+      let toEdge : (Σ e : G'.edgeSet, ↥e.val.toFinset) → T.edgeSet :=
+        fun ⟨e, v, hv⟩ => ⟨s((Sum.inl v : Fin _ ⊕ G'.edgeSet), .inr e),
+          T.mem_edgeSet.mpr (hT_mk (Sym2.mem_toFinset.mp hv))⟩
+      have toEdge_inj : Function.Injective toEdge := by
+        rintro ⟨e₁, v₁, _⟩ ⟨e₂, v₂, _⟩ heq
+        rcases Sym2.eq_iff.mp (Subtype.ext_iff.mp heq) with ⟨ha, hb⟩ | ⟨ha, _⟩
+        · grind only
+        · exact absurd ha Sum.inl_ne_inr
+      have toEdge_surj : Function.Surjective toEdge := by
+        rintro ⟨s, hs⟩
+        refine s.ind (fun a b hs => ?_) hs
+        rcases (fromRel_adj _ _ _).mp ((T.mem_edgeSet).mp hs) with ⟨_, hr | hr⟩
+        · rcases a with x | _ <;> rcases b with _ | e <;> first | exact hr.elim |
+            exact ⟨⟨e, x, Sym2.mem_toFinset.mpr hr⟩, rfl⟩
+        · rcases a with _ | e <;> rcases b with y | _ <;> first | exact hr.elim |
+            exact ⟨⟨e, y, Sym2.mem_toFinset.mpr hr⟩, Subtype.ext Sym2.eq_swap⟩
+      let edgeEquiv : T.edgeSet ≃ Σ e : G'.edgeSet, ↥e.val.toFinset :=
+        (Equiv.ofBijective toEdge ⟨toEdge_inj, toEdge_surj⟩).symm
+      have hT_eq : Nat.card T.edgeSet = 2 * Nat.card G'.edgeSet := by
+        rw [Nat.card_congr edgeEquiv, Nat.card_sigma]
+        have hfib : ∀ e : G'.edgeSet, Nat.card ↥e.val.toFinset = 2 := fun e =>
+          (Nat.card_eq_finsetCard _).trans
+            (Sym2.card_toFinset_of_not_isDiag _ (G'.not_isDiag_of_mem_edgeSet e.2))
+        rw [Finset.sum_const_nat (fun e _ => hfib e), Finset.card_univ,
+            Nat.card_eq_fintype_card, mul_comm]
+      rw [hT_eq, Nat.card_sum, Nat.card_eq_fintype_card (α := Fin _), Fintype.card_fin]
+      omega
+  · -- vertexCover: vertex v lives in its own vertex-node bag.
+    exact fun v => ⟨.inl v, by simp⟩
+  · -- edgeCover: edge (u,v) lives in the edge-node bag for s(u,v).
+    intro u v huv
+    refine ⟨.inr ⟨s(u, v), huv⟩, ?_, ?_⟩ <;> simp [Sym2.mem_toFinset]
+  · -- connectedBags: bags containing v form a star at `.inl v` ⇒ preconnected.
+    -- Every bag-set node is either the centre `.inl x` itself or T-adjacent to it.
+    intro x
+    set S : Set (Fin (Fintype.card V) ⊕ G'.edgeSet) :=
+      {w | x ∈ Sum.elim (fun v => ({v} : Finset _)) (fun e => e.val.toFinset) w}
+    suffices h : ∀ w : ↥S, (_ : SimpleGraph _).Reachable w ⟨.inl x, by simp [S]⟩ from
+      fun u v => (h u).trans (h v).symm
+    rintro ⟨y | ⟨e, he⟩, hw⟩
+    · obtain rfl : x = y := by simpa [S] using hw
+      rfl
+    · have hxe : x ∈ e := by simpa [S] using hw
+      exact (induce_adj.mpr (hT_mk hxe).symm).reachable
+  · -- width: vertex-bags have card 1, edge-bags have card 2 (non-diagonal).
+    rw [TreeDecomp.ewidth_le]
+    rintro (v | ⟨e, he⟩)
+    · simp
+    · simp [Sym2.card_toFinset_of_not_isDiag _ (G'.not_isDiag_of_mem_edgeSet he)]
+
 /-- A graph is acyclic iff it has treewidth ≤ 1. -/
-theorem isAcyclic_iff_treewidth_le [Nonempty V] [Finite V] : G.IsAcyclic ↔ G.treeWidth ≤ 1 := by
+theorem isAcyclic_iff_treewidth_le [Nonempty V] [Finite V] :
+    G.IsAcyclic ↔ G.treeWidth ≤ 1 := by
   constructor
   · intro h
-    rw [treeWidth_le_iff_hasTreeDecomp]
-    sorry
+    obtain ⟨T, hGT, hT⟩ := h.exists_isTree_ge
+    exact (treeWidth_mono hGT).trans (isTree_treewidth hT)
   · rw [IsAcyclic]
     contrapose!
-    intro h
-    obtain ⟨v, ⟨c, hc⟩⟩ := h
+    rintro ⟨v, c, hc⟩
     have len := hc.three_le_length
     obtain ⟨n, hn⟩ : ∃ n, c.length = n + 3 := ⟨c.length - 3, by omega⟩
-    have contained := (cycleGraph_isContained_iff len).mpr
-      ⟨v, c, ⟨hc, (by rfl)⟩⟩
-    calc 1 < (cycleGraph (n+3)).treeWidth := cycleGraph_le_treewidth n
-      _ ≤ G.treeWidth := hn ▸ contained.treeWidth_le
+    have contained := (cycleGraph_isContained_iff len).mpr ⟨v, c, hc, rfl⟩
+    exact (cycleGraph_le_treewidth n).trans_le (hn ▸ contained.treeWidth_le)
 
 end Acyclic
 
