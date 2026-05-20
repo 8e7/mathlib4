@@ -668,41 +668,6 @@ lemma isAcyclic_iff_pairwise_not_isEdgeReachable_two :
   · refine isAcyclic_iff_forall_adj_isBridge.mpr fun _ _ hadj ↦ ?_
     exact isBridge_iff_adj_and_not_isEdgeConnected_two.mpr ⟨hadj, h hadj.ne⟩
 
-
-namespace Subgraph
-
-variable {H : G.Subgraph}
-
-protected structure IsAcyclic : Prop where
-  protected coe : H.coe.IsAcyclic
-
-instance : Coe H.IsAcyclic H.coe.IsAcyclic := ⟨IsAcyclic.coe⟩
-
-protected lemma isAcyclic_iff : H.IsAcyclic ↔ H.coe.IsAcyclic := ⟨fun ⟨h⟩ => h, .mk⟩
-
-protected structure IsTree : Prop where
-  protected coe : H.coe.IsTree
-
-instance : Coe H.IsTree H.coe.IsTree := ⟨IsTree.coe⟩
-
-protected lemma isTree_iff : H.IsTree ↔ H.coe.IsTree := ⟨fun ⟨h⟩ => h, .mk⟩
-
-protected lemma IsTree.connected (h : H.IsTree) : H.Connected := ⟨h.coe.connected⟩
-
-protected lemma IsTree.isAcyclic (h : H.IsTree) : H.IsAcyclic := ⟨h.coe.isAcyclic⟩
-
-lemma isTree_of_connectedComponent (c : H.coe.ConnectedComponent) (hT : G.IsTree) :
-    c.toSimpleGraph.IsTree :=
-  IsAcyclic.isTree_connectedComponent (IsAcyclic.subgraph hT.isAcyclic H) c
-
-lemma isTree_of_connected_induce {s : Set V} (hT : G.IsTree) (hconn : (G.induce s).Connected) :
-    ((⊤ : G.Subgraph).induce s).IsTree := by
-  refine ⟨?_⟩
-  rw [← SimpleGraph.induce_eq_coe_induce_top]
-  exact ⟨hconn, hT.isAcyclic.induce s⟩
-
-end Subgraph
-
 def subtreeOfCut (_ : G.IsTree) (edges : Set (Sym2 V)) (x : V) :
     (G.deleteEdges edges).ConnectedComponent :=
   (G.deleteEdges edges).connectedComponentMk x
