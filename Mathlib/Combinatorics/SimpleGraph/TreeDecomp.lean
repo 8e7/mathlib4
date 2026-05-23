@@ -18,47 +18,29 @@ public import Mathlib.Tactic.ENatToNat
 /-!
 # Tree Decompositions and Tree Width
 
-This file defines tree decompositions on simple graphs and the treewidth parameter.
+This file defines tree decompositions on simple graphs and the treewidth.
 
 ## Main definitions
 
 * `SimpleGraph.TreeDecomp` is a tree decomposition of a simple graph.
 * `TreeDecomp.ewidth` is the extended width of the tree decomposition. `TreeDecomp.width` is the
-  ℕ-valued version.
+  ℕ-valued version, and is equivalent to `ewidth` when there is `[Finite V]`.
 * `SimpleGraph.hasTreeDecomp n` is a predicate that a simple graph has a tree decomposition of width
   at most n.
 * `SimpleGraph.etreeWidth` is the extended tree width of a simple graph. `SimpleGraph.treeWidth` is
   the ℕ-valued version.
 
-## Conventions
-
-The user-facing API uses `treeWidth : SimpleGraph V → ℕ`. The extended version
-`etreeWidth : SimpleGraph V → ℕ∞` is mostly an implementation detail that handles the corner case
-of graphs without finite treewidth (returning `⊤`). For `[Finite V]`, the two are interchangeable
-via `treeWidth_le_iff_etreeWidth_le` (a `simp` lemma) and `treeWidth_le_iff_hasTreeDecomp`. State
-theorems in `treeWidth` form unless infinite-vertex graphs are genuinely in scope.
-
 ## Main statements
 
 * `treeWidth_le_card` shows that a finite graph must have finite treewidth.
-* `etreeWidth_ne_zero_iff_ne_bot` shows that a graph has nonzero treewidth iff it is nonempty.
-* `treewidth_top` shows that the complete graph on a finite vertex type has treewidth `card V - 1`.
+* `treewidth_top` shows that the complete graph with finite vertices has treewidth `card V - 1`.
+* `adhesion_imp_separator` proves that the adhesion set (the intersection of two adjacent bags) is
+  a graph separator for vertices on different sides of the tree.
 
 ## References
 
 * [R. Diestel **Graph Theory**
   https://doi.org/10.1007/978-3-662-70107-2][diestel2025]
-
-## TODO
-
-- Define a treedecomposition for subgraphs, so it is easier to use treeWidth_mono.
-- Prove that G.treeWidth ≥ G.cliqueNumber
-* Prove `G.IsAcyclic ↔ G.treeWidth ≤ 1`. Roadmap:
-  - Add a lemma (or find one) to partition a cycle into two disjoint paths.
-  - Show that for two non adjacent nodes in a cycle, their minimum separator size is ≥ 2.
-  - Prove the ← case.
-  - Add a tool to convert a "forest decomposition" into a tree decomposition.
-  - Construct a tree decomposition for acyclic graphs.
 
 ## Tags
 tree decomposition, treewidth
@@ -84,8 +66,7 @@ section TreeDecomp
 every edge of `G` lies in some bag and the bags containing any fixed vertex form
 a connected subgraph of `T`. -/
 structure TreeDecomp (G : SimpleGraph V) where
-  /-- The type of bags in the tree. Fixed at `Type 0` so tree decompositions can
-  be transported across graph isomorphisms regardless of the vertex universe. -/
+  /-- The type of bags in the tree. -/
   W : Type
   /-- The set of vertices in each bag. -/
   𝓧 : W → Finset V
@@ -107,7 +88,7 @@ the maximum bag size minus one. -/
 noncomputable def TreeDecomp.ewidth (t : TreeDecomp G) : ℕ∞ :=
   ⨆ w : t.W, #(t.𝓧 w) - 1
 
-/-- `ℕ`-valued view of `TreeDecomp.ewidth`, with junk value `0` when the width is `⊤`. -/
+/-- `ℕ`-valued view of `TreeDecomp.ewidth`. -/
 noncomputable def TreeDecomp.width (t : TreeDecomp G) : ℕ := t.ewidth.toNat
 
 lemma TreeDecomp.ewidth_eq (t : TreeDecomp G) :
@@ -122,6 +103,7 @@ lemma TreeDecomp.ewidth_le {k : ℕ} (t : TreeDecomp G) :
   rw [ewidth_eq, iSup_le_iff]
   enat_to_nat
 
+/-- The cardinality of every bag is less than the ewidth + 1. -/
 lemma TreeDecomp.card_bag_le (t : G.TreeDecomp) (w : t.W) :
     #(t.𝓧 w) ≤ t.ewidth + 1 := by
   have h : (#(t.𝓧 w) - 1 : ℕ∞) ≤ t.ewidth := le_iSup (fun w => (#(t.𝓧 w) - 1 : ℕ∞)) w
@@ -136,56 +118,6 @@ lemma hasTreeDecomp.mono {n m : ℕ∞} (h : n ≤ m) : G.hasTreeDecomp n → G.
   intro ⟨t, ht⟩
   use t
   exact le_trans ht h
-
-/-- Transport a tree decomposition along a graph isomorphism by mapping each bag. -/
-noncomputable def TreeDecomp.iso (φ : G ≃g G') (t : G.TreeDecomp) : G'.TreeDecomp := { t with
-  𝓧 w := (t.𝓧 w).map φ
-  vertexCover v' := (t.vertexCover (φ.symm v')).imp fun _ ↦ Finset.mem_map_equiv.mpr
-  edgeCover u' v' huv :=
-    (t.edgeCover (φ.symm.map_rel_iff.mpr huv)).imp fun _ ⟨hu, hv⟩ ↦
-      ⟨Finset.mem_map_equiv.mpr hu, Finset.mem_map_equiv.mpr hv⟩
-  connectedBags v' := by
-    have : {w : t.W | v' ∈ (t.𝓧 w).map φ} = {w | φ.symm v' ∈ t.𝓧 w} := by
-      ext; exact Finset.mem_map_equiv
-    exact this ▸ t.connectedBags (φ.symm v') }
-
-@[simp]
-lemma TreeDecomp.ewidth_iso (φ : G ≃g G') (t : G.TreeDecomp) :
-    (t.iso φ).ewidth = t.ewidth := by
-  simp only [TreeDecomp.ewidth_eq, TreeDecomp.iso, Finset.card_map]
-
-lemma Iso.hasTreeDecomp_iff {n : ℕ∞} (φ : G ≃g G') :
-    G.hasTreeDecomp n ↔ G'.hasTreeDecomp n :=
-  ⟨fun ⟨t, ht⟩ ↦ ⟨t.iso φ, TreeDecomp.ewidth_iso φ t ▸ ht⟩,
-   fun ⟨t, ht⟩ ↦ ⟨t.iso φ.symm, TreeDecomp.ewidth_iso φ.symm t ▸ ht⟩⟩
-
-/-- Pull back a tree decomposition along a graph embedding by taking the preimage of each bag.
-  Together with `ewidth_comap_le`, this gives `treeWidth` monotonicity under induced subgraphs. -/
-noncomputable def TreeDecomp.comap (f : G ↪g G') (t : G'.TreeDecomp) : G.TreeDecomp where
-  W := t.W
-  𝓧 w := (t.𝓧 w).preimage f f.injective.injOn
-  T := t.T
-  isTree := t.isTree
-  vertexCover v := (t.vertexCover (f v)).imp fun _ ↦ Finset.mem_preimage.mpr
-  edgeCover u v huv :=
-    (t.edgeCover (f.map_rel_iff.mpr huv)).imp fun _ ⟨hu, hv⟩ ↦
-      ⟨Finset.mem_preimage.mpr hu, Finset.mem_preimage.mpr hv⟩
-  connectedBags v := by
-    have : {w : t.W | v ∈ (t.𝓧 w).preimage f f.injective.injOn} = {w | f v ∈ t.𝓧 w} := by
-      ext; exact Finset.mem_preimage
-    exact this ▸ t.connectedBags (f v)
-
-lemma TreeDecomp.ewidth_comap_le (f : G ↪g G') (t : G'.TreeDecomp) :
-    (t.comap f).ewidth ≤ t.ewidth := by
-  refine iSup_mono fun w => ?_
-  gcongr
-  change ((t.𝓧 w).preimage f f.injective.injOn).card ≤ (t.𝓧 w).card
-  exact Finset.card_le_card_of_injOn f
-    (fun v hv => Finset.mem_preimage.mp hv) f.injective.injOn
-
-lemma Embedding.hasTreeDecomp {n : ℕ∞} (f : G ↪g G') :
-    G'.hasTreeDecomp n → G.hasTreeDecomp n :=
-  fun ⟨t, ht⟩ => ⟨t.comap f, (TreeDecomp.ewidth_comap_le f t).trans ht⟩
 
 @[simp]
 lemma TreeDecomp.coe_width {t : TreeDecomp G} (h : t.ewidth ≠ ⊤) :
@@ -208,48 +140,6 @@ lemma TreeDecomp.width_ge {k : ℕ} (t : TreeDecomp G) (hwidth : t.ewidth ≠ �
 lemma TreeDecomp.width_le {k : ℕ} (t : TreeDecomp G) (hwidth : t.ewidth ≠ ⊤) :
     t.width ≤ k ↔ ∀ w : t.W, #(t.𝓧 w) - 1 ≤ k := by
   rw [← Nat.cast_le (α := ℕ∞), t.coe_width hwidth, t.ewidth_le]
-
-/-- The tree decomposition obtained by putting all vertices in one bag. -/
-def trivialTreeDecomp [Fintype V] (G : SimpleGraph V) : G.TreeDecomp where
-  W := Unit
-  𝓧 := fun _ ↦ univ
-  T := ⊥
-  isTree := by exact IsTree.of_subsingleton
-  vertexCover := by simp
-  edgeCover := by simp
-  connectedBags := by aesop_graph
-
-lemma ewidth_trivialTreeDecomp [Fintype V] :
-    (G.trivialTreeDecomp).ewidth = (card V - 1 : ℕ) := by
-  simp [TreeDecomp.ewidth_eq, trivialTreeDecomp]
-
-/-- The tree decomposition of `⊥` indexed by `Option V` with a star graph rooted at `none`:
-bags are `∅` at `none` and `{v}` at `some v`. Restricted to `V : Type` so that the bag-indexing
-type fits in `Type 0` (the fixed universe of `TreeDecomp.W`). -/
-noncomputable def botTreeDecomp {V : Type} : (⊥ : SimpleGraph V).TreeDecomp where
-  W := Option V
-  𝓧 w := w.elim ∅ ({·})
-  T := starGraph none
-  isTree := isTree_starGraph _
-  vertexCover v := ⟨some v, by simp⟩
-  edgeCover _ _ h := h.elim
-  connectedBags v := by
-    have : {w : Option V | v ∈ w.elim ∅ ({·} : V → Finset V)} = {some v} := by
-      ext w
-      cases w <;> simp [eq_comm]
-    exact this ▸ Preconnected.of_subsingleton
-
-lemma ewidth_botTreeDecomp {V : Type} : (botTreeDecomp (V := V)).ewidth = 0 := by
-  refine iSup_eq_bot.mpr ?_
-  rintro (_ | w) <;> simp [botTreeDecomp]
-
-/-- If G has a tree decomposition of width n, then the same decomposition applies for any
-  subgraph. -/
-@[mono]
-lemma TreeDecomp.mono {G' : SimpleGraph V} {n : ℕ∞} (h : G' ≤ G) (hG : G.hasTreeDecomp n) :
-    G'.hasTreeDecomp n := by
-  obtain ⟨t, ht⟩ := hG
-  exact ⟨{ t with edgeCover := fun _ _ huv ↦ t.edgeCover (h huv)}, ht⟩
 
 /-- On a finite vertex type, every tree decomposition has `width` at most `card V - 1`. -/
 lemma TreeDecomp.ewidth_le_card [Fintype V] (t : TreeDecomp G) :
@@ -279,9 +169,84 @@ lemma TreeDecomp.width_le_card [Fintype V] (t : TreeDecomp G) :
 lemma TreeDecomp.card_bag_le_width_of_finite [Finite V] (t : G.TreeDecomp) (w : t.W) :
     #(t.𝓧 w) ≤ t.width + 1 := t.card_bag_le_width t.ewidth_ne_top_of_finite w
 
-end TreeDecomp
+/-- Transport a tree decomposition along a graph isomorphism by mapping each bag. -/
+noncomputable def TreeDecomp.iso (φ : G ≃g G') (t : G.TreeDecomp) : G'.TreeDecomp := { t with
+  𝓧 w := (t.𝓧 w).map φ
+  vertexCover v' := (t.vertexCover (φ.symm v')).imp fun _ ↦ Finset.mem_map_equiv.mpr
+  edgeCover u' v' huv :=
+    (t.edgeCover (φ.symm.map_rel_iff.mpr huv)).imp fun _ ⟨hu, hv⟩ ↦
+      ⟨Finset.mem_map_equiv.mpr hu, Finset.mem_map_equiv.mpr hv⟩
+  connectedBags v' := by
+    have : {w : t.W | v' ∈ (t.𝓧 w).map φ} = {w | φ.symm v' ∈ t.𝓧 w} := by
+      ext; exact Finset.mem_map_equiv
+    exact this ▸ t.connectedBags (φ.symm v') }
 
-/-! ## Tree width -/
+@[simp]
+lemma TreeDecomp.ewidth_iso (φ : G ≃g G') (t : G.TreeDecomp) :
+    (t.iso φ).ewidth = t.ewidth := by
+  simp only [TreeDecomp.ewidth_eq, TreeDecomp.iso, Finset.card_map]
+
+lemma Iso.hasTreeDecomp {n : ℕ∞} (φ : G ≃g G') :
+    G.hasTreeDecomp n ↔ G'.hasTreeDecomp n :=
+  ⟨fun ⟨t, ht⟩ ↦ ⟨t.iso φ, TreeDecomp.ewidth_iso φ t ▸ ht⟩,
+   fun ⟨t, ht⟩ ↦ ⟨t.iso φ.symm, TreeDecomp.ewidth_iso φ.symm t ▸ ht⟩⟩
+
+/-- Pull back a tree decomposition along a graph embedding by taking the preimage of each bag. -/
+noncomputable def TreeDecomp.comap (f : G ↪g G') (t : G'.TreeDecomp) : G.TreeDecomp where
+  W := t.W
+  𝓧 w := (t.𝓧 w).preimage f f.injective.injOn
+  T := t.T
+  isTree := t.isTree
+  vertexCover v := (t.vertexCover (f v)).imp fun _ ↦ Finset.mem_preimage.mpr
+  edgeCover u v huv :=
+    (t.edgeCover (f.map_rel_iff.mpr huv)).imp fun _ ⟨hu, hv⟩ ↦
+      ⟨Finset.mem_preimage.mpr hu, Finset.mem_preimage.mpr hv⟩
+  connectedBags v := by
+    have : {w : t.W | v ∈ (t.𝓧 w).preimage f f.injective.injOn} = {w | f v ∈ t.𝓧 w} := by
+      ext; exact Finset.mem_preimage
+    exact this ▸ t.connectedBags (f v)
+
+lemma TreeDecomp.ewidth_comap_le (f : G ↪g G') (t : G'.TreeDecomp) :
+    (t.comap f).ewidth ≤ t.ewidth := by
+  refine iSup_mono fun w => ?_
+  gcongr
+  change ((t.𝓧 w).preimage f f.injective.injOn).card ≤ (t.𝓧 w).card
+  exact Finset.card_le_card_of_injOn f
+    (fun v hv => Finset.mem_preimage.mp hv) f.injective.injOn
+
+lemma Embedding.hasTreeDecomp {n : ℕ∞} (f : G ↪g G') :
+    G'.hasTreeDecomp n → G.hasTreeDecomp n :=
+  fun ⟨t, ht⟩ => ⟨t.comap f, (TreeDecomp.ewidth_comap_le f t).trans ht⟩
+
+/-- The tree decomposition of `⊥` indexed by `Option V` with a star graph rooted at `none`:
+bags are `∅` at `none` and `{v}` at `some v`. Restricted to `V : Type` so that the bag-indexing
+type fits in `Type 0` (the fixed universe of `TreeDecomp.W`). -/
+noncomputable def botTreeDecomp {V : Type} : (⊥ : SimpleGraph V).TreeDecomp where
+  W := Option V
+  𝓧 w := w.elim ∅ ({·})
+  T := starGraph none
+  isTree := isTree_starGraph _
+  vertexCover v := ⟨some v, by simp⟩
+  edgeCover _ _ h := h.elim
+  connectedBags v := by
+    have : {w : Option V | v ∈ w.elim ∅ ({·} : V → Finset V)} = {some v} := by
+      ext w
+      cases w <;> simp [eq_comm]
+    exact this ▸ Preconnected.of_subsingleton
+
+lemma ewidth_botTreeDecomp {V : Type} : (botTreeDecomp (V := V)).ewidth = 0 := by
+  refine iSup_eq_bot.mpr ?_
+  rintro (_ | w) <;> simp [botTreeDecomp]
+
+/-- If G has a tree decomposition of width n, then the same decomposition applies for any
+  subgraph. -/
+@[mono]
+lemma TreeDecomp.mono {G' : SimpleGraph V} {n : ℕ∞} (h : G' ≤ G) (hG : G.hasTreeDecomp n) :
+    G'.hasTreeDecomp n := by
+  obtain ⟨t, ht⟩ := hG
+  exact ⟨{ t with edgeCover := fun _ _ huv ↦ t.edgeCover (h huv)}, ht⟩
+
+end TreeDecomp
 
 section TreeWidth
 
@@ -314,6 +279,20 @@ lemma etreeWidth_le_iff_hasTreeDecomp (k : ℕ) :
 @[simp]
 lemma etreeWidth_ge_iff {k : ℕ∞} : G.etreeWidth ≥ k ↔ ∀ t : G.TreeDecomp, t.ewidth ≥ k := by
   contrapose!; exact iInf_lt_iff
+
+/-- The tree decomposition obtained by putting all vertices in one bag. -/
+def trivialTreeDecomp [Fintype V] (G : SimpleGraph V) : G.TreeDecomp where
+  W := Unit
+  𝓧 := fun _ ↦ univ
+  T := ⊥
+  isTree := by exact IsTree.of_subsingleton
+  vertexCover := by simp
+  edgeCover := by simp
+  connectedBags := by aesop_graph
+
+lemma ewidth_trivialTreeDecomp [Fintype V] :
+    (G.trivialTreeDecomp).ewidth = (card V - 1 : ℕ) := by
+  simp [TreeDecomp.ewidth_eq, trivialTreeDecomp]
 
 /-- The treewidth of a finite graph is at most `card V - 1`. -/
 lemma etreeWidth_le_card [Fintype V] : G.etreeWidth ≤ card V - 1 :=
@@ -656,7 +635,7 @@ theorem isTree_treewidth [Nonempty V] [Finite V] (ht : G.IsTree) : G.treeWidth �
   let iso : G ≃g G.overFin rfl := G.overFinIso rfl
   -- Chosen root vertex in the `Fin n` encoding; used to anchor the connectedness argument.
   let r : Fin (Fintype.card V) := iso (Classical.arbitrary V)
-  rw [treeWidth_le_iff_hasTreeDecomp, iso.hasTreeDecomp_iff]
+  rw [treeWidth_le_iff_hasTreeDecomp, iso.hasTreeDecomp]
   set G' := G.overFin rfl
   have ht' : G'.IsTree := iso.isTree_iff.mp ht
   set T : SimpleGraph (Fin (Fintype.card V) ⊕ G'.edgeSet) :=
