@@ -585,8 +585,7 @@ def inducedSeparation {x y : t.W}
 lemma mem_inducedSeparation {x y : t.W} {v : V} (e : t.T.Adj x y) (z : t.W) :
     v ∈ t.inducedSeparation e z ↔ v ∉ t.adhesion e ∧
     ∃ w ∈ (t.isTree.subtreeOfCut {s(x, y)} z).supp, v ∈ t.𝓧 w := by
-  rw [inducedSeparation, Set.mem_diff, and_comm]
-  simp only [Set.mem_iUnion, Finset.mem_coe, exists_prop]
+  simp [inducedSeparation, Set.mem_diff, and_comm]
 
 theorem disjoint_inducedSeparation {x y : t.W}
     (e : t.T.Adj x y) :
@@ -594,21 +593,22 @@ theorem disjoint_inducedSeparation {x y : t.W}
   classical
   rw [Set.disjoint_left]
   intro v hvx hvy
+  -- By contradiction, assume v appears in x and y.
   obtain ⟨hv_not_adh, w₁, hw₁_supp, hv₁⟩ := (t.mem_inducedSeparation e x).mp hvx
   obtain ⟨_, w₂, hw₂_supp, hv₂⟩ := (t.mem_inducedSeparation e y).mp hvy
+  -- q is a walk from w₁ to w₂, which contains edge e.
   obtain ⟨q, hq⟩ := preconnected_induce_iff_forall_exists_walk.mp (t.connectedBags v) hv₁ hv₂
-  let p : t.T.Path w₁ w₂ := q.toPath
-  have hxy : s(x, y) ∈ p.val.edges :=
-    t.isTree.path_mem_cutEdge_of_subtreeOfCut_ne p
-      (fun h => t.isTree.disjoint_subtreeOfCut e
+  have hxy : s(x, y) ∈ q.toPath.val.edges :=
+    t.isTree.path_mem_cutEdge_of_subtreeOfCut_ne q.toPath
+      (fun h ↦ t.isTree.disjoint_subtreeOfCut e
         ((hw₁_supp : _ = _).symm.trans (h.trans hw₂_supp)))
   have hp_sub := Walk.support_toPath_subset q
   exact hv_not_adh ((t.mem_adhesion e).mpr
-    ⟨hq x (hp_sub (p.val.fst_mem_support_of_mem_edges hxy)),
-     hq y (hp_sub (p.val.snd_mem_support_of_mem_edges hxy))⟩)
+    ⟨hq x (hp_sub (q.toPath.val.fst_mem_support_of_mem_edges hxy)),
+     hq y (hp_sub (q.toPath.val.snd_mem_support_of_mem_edges hxy))⟩)
 
 /-- If there is no bag that contains u and v, then there is a proper adhesion set such that
-- Its size is at most t.width.
+- Its size is at most t.width (one less than the maximum).
 - u and v are in different sides of the induced separation.
 -/
 theorem exists_proper_adhesion [Nonempty V] [Finite V] (u v : V) :
@@ -620,12 +620,15 @@ theorem exists_proper_adhesion [Nonempty V] [Finite V] (u v : V) :
     obtain ⟨w₀, hw₀⟩ := t.vertexCover u
     obtain ⟨w₁, hw₁⟩ := t.vertexCover v
     obtain ⟨p, hp_path, _⟩ := t.isTree.existsUnique_path w₀ w₁
+    -- Consider the path from two bags that contain u and v.
     obtain ⟨d, hd_in, hfst, hsnd⟩ :=
       p.exists_boundary_dart {w | u ∈ t.𝓧 w} hw₀ (h_sep w₁ · hw₁)
+    -- d is the dart such that u ∈ t.𝓧 d.fst, v ∉ t.𝓧 d.snd
     refine ⟨d.fst, d.snd, d.adj, ?_⟩
     constructor
     · simp only [Set.mem_setOf_eq] at hfst hsnd
-      have huv : t.𝓧 d.fst ≠ t.𝓧 d.snd := fun heq => hsnd (heq ▸ hfst)
+      -- The two bags are different, so their intersection size must be at most t.width.
+      have huv : t.𝓧 d.fst ≠ t.𝓧 d.snd := fun heq ↦ hsnd (heq ▸ hfst)
       rw [adhesion]
       have hbu := t.card_bag_le_width_of_finite d.fst
       have hbv := t.card_bag_le_width_of_finite d.snd
@@ -637,22 +640,27 @@ theorem exists_proper_adhesion [Nonempty V] [Finite V] (u v : V) :
       refine ⟨⟨Or.inr hsnd, d.fst, rfl, hfst⟩, Or.inl (h_sep d.fst hfst), w₁, ?_, hw₁⟩
       exact (t.isTree.subtreeOfCut_endpoints_of_dart_mem_path ⟨p, hp_path⟩ hd_in).2
 
-/-- If u, v are in the induced separation from an edge, any walk between u, v contains some node in
-  the adhesion set. -/
+/-- If u, v are in different parts of the induced separation, any walk between u, v on G contains
+some node in the adhesion set. -/
 lemma mem_adhesion_of_inducedSeparation_walk {u v : V} {x y : t.W} (e : t.T.Adj x y)
     (hu : u ∈ t.inducedSeparation e x) (hv : v ∈ t.inducedSeparation e y) :
     ∀ walk : G.Walk u v, walk.toSubgraph.verts ∩ t.adhesion e ≠ ∅ := by
-  intro walk h
+  intro walk
+  by_contra h
   have hv_notin : v ∉ t.inducedSeparation e x :=
     Set.disjoint_right.mp (t.disjoint_inducedSeparation e) hv
+  -- By h, any vertex on the walk shouldn't be in the adhesion set, so they are in either side of
+  -- the induced separation.
+  have nmem : ∀ z, z ∈ walk.toSubgraph.verts → z ∉ ↑(t.adhesion e) :=
+    fun z hz hadh ↦ Set.notMem_empty z (h ▸ ⟨hz, hadh⟩)
+  -- From hu and hv, there exists some boundary dart that crosses induced separations.
   obtain ⟨d, hd_in, hd_fst_in, hd_snd_notin⟩ :=
     walk.exists_boundary_dart (t.inducedSeparation e x) hu hv_notin
-  have nmem : ∀ z, z ∈ walk.toSubgraph.verts → z ∉ ↑(t.adhesion e) :=
-    fun z hz hadh => Set.notMem_empty z (h ▸ ⟨hz, hadh⟩)
-  have h_fst_walk :=
+  have h_fst_walk : d.fst ∈ walk.toSubgraph.verts :=
     walk.mem_verts_toSubgraph.mpr (walk.dart_fst_mem_support_of_mem_darts hd_in)
-  have h_snd_walk :=
+  have h_snd_walk : d.snd ∈ walk.toSubgraph.verts :=
     walk.mem_verts_toSubgraph.mpr (walk.dart_snd_mem_support_of_mem_darts hd_in)
+  -- Some bag w₀ must contain d.fst and d.snd.
   obtain ⟨w₀, h_fst_w₀, h_snd_w₀⟩ := t.edgeCover d.adj
   rcases t.isTree.subtreeOfCut_eq_or_eq e w₀ with hw₀_x | hw₀_y
   · exact hd_snd_notin ⟨Set.mem_iUnion₂.mpr ⟨w₀, hw₀_x, h_snd_w₀⟩, nmem _ h_snd_walk⟩
@@ -667,7 +675,7 @@ theorem adhesion_imp_separator [Nonempty V] [Finite V] {u v : V} {x y : t.W} (e 
   rw [isSeparator_iff_walk_cover]
   have mem_adh := t.mem_adhesion_of_inducedSeparation_walk e hu hv
   simp only [mem_inducedSeparation] at hu hv
-  refine ⟨hu.left, hv.left, fun walk => ?_⟩
+  refine ⟨hu.left, hv.left, fun walk ↦ ?_⟩
   obtain ⟨z, hzw, hza⟩ := Set.inter_nonempty.mp (Set.nonempty_iff_ne_empty.mpr (mem_adh walk))
   exact ⟨z, hza, hzw⟩
 
