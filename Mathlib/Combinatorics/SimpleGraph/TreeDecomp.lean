@@ -615,30 +615,30 @@ theorem exists_proper_adhesion [Nonempty V] [Finite V] (u v : V) :
     ¬(∃ w : t.W, u ∈ t.𝓧 w ∧ v ∈ t.𝓧 w) →
     (∃ x y : t.W, ∃ h : t.T.Adj x y, #(t.adhesion h) ≤ t.width ∧
     u ∈ t.inducedSeparation h x ∧ v ∈ t.inducedSeparation h y) := by
-    intro h_sep
-    push Not at h_sep
-    obtain ⟨w₀, hw₀⟩ := t.vertexCover u
-    obtain ⟨w₁, hw₁⟩ := t.vertexCover v
-    obtain ⟨p, hp_path, _⟩ := t.isTree.existsUnique_path w₀ w₁
-    -- Consider the path from two bags that contain u and v.
-    obtain ⟨d, hd_in, hfst, hsnd⟩ :=
-      p.exists_boundary_dart {w | u ∈ t.𝓧 w} hw₀ (h_sep w₁ · hw₁)
-    -- d is the dart such that u ∈ t.𝓧 d.fst, v ∉ t.𝓧 d.snd
-    refine ⟨d.fst, d.snd, d.adj, ?_⟩
-    constructor
-    · simp only [Set.mem_setOf_eq] at hfst hsnd
-      -- The two bags are different, so their intersection size must be at most t.width.
-      have huv : t.𝓧 d.fst ≠ t.𝓧 d.snd := fun heq ↦ hsnd (heq ▸ hfst)
-      rw [adhesion]
-      have hbu := t.card_bag_le_width_of_finite d.fst
-      have hbv := t.card_bag_le_width_of_finite d.snd
-      have hcard_eq := Finset.card_union_add_card_inter (t.𝓧 d.fst) (t.𝓧 d.snd)
-      have hcard_lt : #(t.𝓧 d.fst ∩ t.𝓧 d.snd) < #(t.𝓧 d.fst ∪ t.𝓧 d.snd) :=
-        Finset.card_lt_card (inf_lt_sup.mpr huv)
-      omega
-    · simp only [mem_inducedSeparation, not_mem_adhesion]
-      refine ⟨⟨Or.inr hsnd, d.fst, rfl, hfst⟩, Or.inl (h_sep d.fst hfst), w₁, ?_, hw₁⟩
-      exact (t.isTree.subtreeOfCut_endpoints_of_dart_mem_path ⟨p, hp_path⟩ hd_in).2
+  intro h_sep
+  push Not at h_sep
+  obtain ⟨w₀, hw₀⟩ := t.vertexCover u
+  obtain ⟨w₁, hw₁⟩ := t.vertexCover v
+  obtain ⟨p, hp_path, _⟩ := t.isTree.existsUnique_path w₀ w₁
+  -- Consider the path from two bags that contain u and v.
+  obtain ⟨d, hd_in, hfst, hsnd⟩ :=
+    p.exists_boundary_dart {w | u ∈ t.𝓧 w} hw₀ (h_sep w₁ · hw₁)
+  -- d is the dart such that u ∈ t.𝓧 d.fst, v ∉ t.𝓧 d.snd
+  refine ⟨d.fst, d.snd, d.adj, ?_⟩
+  constructor
+  · simp only [Set.mem_setOf_eq] at hfst hsnd
+    -- The two bags are different, so their intersection size must be at most t.width.
+    have huv : t.𝓧 d.fst ≠ t.𝓧 d.snd := fun heq ↦ hsnd (heq ▸ hfst)
+    rw [adhesion]
+    have hbu := t.card_bag_le_width_of_finite d.fst
+    have hbv := t.card_bag_le_width_of_finite d.snd
+    have hcard_eq := Finset.card_union_add_card_inter (t.𝓧 d.fst) (t.𝓧 d.snd)
+    have hcard_lt : #(t.𝓧 d.fst ∩ t.𝓧 d.snd) < #(t.𝓧 d.fst ∪ t.𝓧 d.snd) :=
+      Finset.card_lt_card (inf_lt_sup.mpr huv)
+    omega
+  · simp only [mem_inducedSeparation, not_mem_adhesion]
+    refine ⟨⟨Or.inr hsnd, d.fst, rfl, hfst⟩, Or.inl (h_sep d.fst hfst), w₁, ?_, hw₁⟩
+    exact (t.isTree.subtreeOfCut_endpoints_of_dart_mem_path ⟨p, hp_path⟩ hd_in).2
 
 /-- If u, v are in different parts of the induced separation, any walk between u, v on G contains
 some node in the adhesion set. -/
