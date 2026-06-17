@@ -457,7 +457,7 @@ lemma etreewidth_top [Fintype V] : (⊤ : SimpleGraph V).etreeWidth = (card V - 
 
 theorem isClique_card_le_etreeWidth (s : Finset V) :
     G.IsClique s → s.card - 1 ≤ G.etreeWidth := by
-  rw [isClique_iff_induce_eq]
+  rw [← induce_eq_top]
   intro h
   calc (s.card - 1 : ℕ∞)
       = (induce (↑s) G).etreeWidth := by simp [h]
@@ -493,7 +493,7 @@ lemma isTree_subtreeOfCut {u v : V} (ht : G.IsTree) (_ : G.Adj u v) (x : V) :
 /-- After cutting edge (u, v), the subtree of u and v are disjoint. -/
 lemma disjoint_subtreeOfCut {u v : V} (ht : G.IsTree) (hadj : G.Adj u v) :
     ht.subtreeOfCut {s(u, v)} u ≠ ht.subtreeOfCut {s(u, v)} v := fun h ↦
-  (isAcyclic_iff_forall_adj_isBridge.mp ht.isAcyclic hadj).right (ConnectedComponent.exact h)
+  (isAcyclic_iff_forall_adj_isBridge.mp ht.isAcyclic hadj) (ConnectedComponent.exact h)
 
 /-- In a tree, any path between two vertices in different subtrees (formed by cutting an edge)
 must include the cut edge. -/
@@ -542,7 +542,10 @@ theorem subtreeOfCut_endpoints_of_dart_mem_path {a b : V} (ht : G.IsTree)
   let path_ru : G.Path a d.fst := ⟨ru, hp_path.of_append_left.of_append_left⟩
   let path_rv : G.Path d.snd b := ⟨rv, hp_path.of_append_right⟩
   have h_edges_nodup : (ru.edges ++ d.edge :: rv.edges).Nodup := by
-    simpa [Walk.edges_append] using hp_path.isTrail.edges_nodup
+    have h := hp_path.isTrail.edges_nodup
+    simp only [Walk.edges_append, Walk.edges_cons, Walk.edges_nil, List.append_assoc,
+      List.cons_append, List.nil_append] at h
+    exact h
   have h_edge_notin_ru : d.edge ∉ ru.edges := fun h ↦
     List.disjoint_of_nodup_append h_edges_nodup h (List.mem_cons_self ..)
   have h_edge_notin_rv : d.edge ∉ rv.edges :=
@@ -585,7 +588,7 @@ def inducedSeparation {x y : t.W}
 lemma mem_inducedSeparation {x y : t.W} {v : V} (e : t.T.Adj x y) (z : t.W) :
     v ∈ t.inducedSeparation e z ↔ v ∉ t.adhesion e ∧
     ∃ w ∈ (t.isTree.subtreeOfCut {s(x, y)} z).supp, v ∈ t.𝓧 w := by
-  simp [inducedSeparation, Set.mem_diff, and_comm]
+  simp [inducedSeparation, Set.mem_sdiff, and_comm]
 
 theorem disjoint_inducedSeparation {x y : t.W}
     (e : t.T.Adj x y) :
@@ -602,7 +605,7 @@ theorem disjoint_inducedSeparation {x y : t.W}
     t.isTree.path_mem_cutEdge_of_subtreeOfCut_ne q.toPath
       (fun h ↦ t.isTree.disjoint_subtreeOfCut e
         ((hw₁_supp : _ = _).symm.trans (h.trans hw₂_supp)))
-  have hp_sub := Walk.support_toPath_subset q
+  have hp_sub := Walk.support_toPath_subset_support q
   exact hv_not_adh ((t.mem_adhesion e).mpr
     ⟨hq x (hp_sub (q.toPath.val.fst_mem_support_of_mem_edges hxy)),
      hq y (hp_sub (q.toPath.val.snd_mem_support_of_mem_edges hxy))⟩)
